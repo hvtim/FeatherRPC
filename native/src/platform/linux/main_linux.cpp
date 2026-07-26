@@ -5,7 +5,7 @@
 
 #include "cli/StatusFile.h"
 
-#include "platform/linux/AppIndicatorTray.h"
+#include "platform/linux/SniTray.h"
 #include "platform/linux/CurlAlbumArtLookup.h"
 #include "platform/linux/DesktopAutoLaunch.h"
 #include "platform/linux/MprisMediaSource.h"
@@ -76,9 +76,9 @@ int main(int argc, char** argv) {
 
     if (HasNoTrayFlag(argc, argv)) {
         // No GLib main loop/tray in this mode - platform_posix's sigwait
-        // loop is the entire event loop, replacing AppIndicator's timer-
-        // based menu refresh the same way the Windows daemon path
-        // replaces the tray's message pump.
+        // loop is the entire event loop, replacing the SNI/dbusmenu
+        // D-Bus dispatch the same way the Windows daemon path replaces
+        // the tray's message pump.
         platform_posix::DaemonBlockSignalsAndWritePidFile();
         engine.OnStatusChanged = [&] { cli::WriteStatusFile(engine.Status()); };
         engine.Start();
@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
 
     platform_linux::DesktopAutoLaunch autoLaunch;
 
-    nativeui::AppIndicatorTray tray;
+    nativeui::SniTray tray;
     if (!tray.Create("featherrpc")) {
         core::Log::Write("[error] Failed to create the tray icon.");
         return 1;
