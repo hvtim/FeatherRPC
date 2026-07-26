@@ -1,0 +1,6 @@
+native/build/
+native/build-*/
+installer/app/
+installer/linux/app/
+installer/macos/app/
+*.zip

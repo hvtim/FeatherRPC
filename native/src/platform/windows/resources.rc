@@ -1,0 +1,19 @@
+#include <windows.h>
+#include "resource.h"
+
+// Enables Common Controls v6 (modern control rendering) and per-monitor-v2 DPI awareness.
+1 RT_MANIFEST "app.manifest"
+
+// First ICON in the .rc becomes the exe's file icon (shown in Explorer) too.
+IDI_APP_ICON ICON "../../../../assets/icon.ico"
+
+IDD_TEXT_PROMPT DIALOGEX 0, 0, 240, 85
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "FeatherRPC"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT           "", IDC_PROMPT_LABEL, 7, 7, 226, 16
+    EDITTEXT        IDC_PROMPT_EDIT, 7, 26, 226, 14, ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 114, 60, 55, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 175, 60, 55, 14
+END
