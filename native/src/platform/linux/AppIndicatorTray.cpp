@@ -121,7 +121,7 @@ void AppIndicatorTray::HandleActivate(GSimpleAction* action, GVariant* parameter
     // current state, flip it, and commit via set_state (mirroring the
     // library's own onCheckActivate example rather than waiting on a
     // separate "change-state" round trip).
-    if (name == "broadcast" || name == "track-number" || name == "start-at-login") {
+    if (name == "broadcast" || name == "track-number" || name == "start-at-login" || name == "tray-enabled") {
         GVariant* state = g_action_get_state(G_ACTION(action));
         bool active = !g_variant_get_boolean(state);
         g_variant_unref(state);
@@ -133,11 +133,18 @@ void AppIndicatorTray::HandleActivate(GSimpleAction* action, GVariant* parameter
         } else if (name == "track-number") {
             config_.showTrackNumber = active;
             NotifyConfigChanged();
-        } else {
+        } else if (name == "start-at-login") {
             startAtLogin_ = active;
             if (OnStartAtLoginChanged) {
                 OnStartAtLoginChanged(active);
             }
+        } else {
+            // Cannot apply live - a running process can't remove its own
+            // tray icon mid-session - main_linux.cpp's OnConfigChanged
+            // logs the deferred effect, this class just flips the flag
+            // like any other toggle.
+            config_.trayEnabled = active;
+            NotifyConfigChanged();
         }
         return;
     }
@@ -209,6 +216,7 @@ void AppIndicatorTray::RebuildMenu() {
     addAction("art-mode", g_variant_new_string(config_.artMode.c_str()), G_VARIANT_TYPE_STRING);
     addAction("poll-interval", g_variant_new_int32(config_.pollIntervalMs), G_VARIANT_TYPE_INT32);
     addAction("start-at-login", g_variant_new_boolean(startAtLogin_), nullptr);
+    addAction("tray-enabled", g_variant_new_boolean(config_.trayEnabled), nullptr);
     addAction("exit", nullptr, nullptr);
 
     GMenuItem* setAppIdItem = g_menu_item_new("Set Discord Application ID...", "indicator.set-app-id");
@@ -266,6 +274,7 @@ void AppIndicatorTray::RebuildMenu() {
 
     GMenu* loginSection = g_menu_new();
     g_menu_append(loginSection, "Start automatically when you log in", "indicator.start-at-login");
+    g_menu_append(loginSection, "Show tray icon (applies next launch)", "indicator.tray-enabled");
     g_menu_append_section(menu, nullptr, G_MENU_MODEL(loginSection));
     g_object_unref(loginSection);
 

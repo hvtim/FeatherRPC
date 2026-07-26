@@ -188,6 +188,9 @@ else()
         src/core/DiscordIpcClient.cpp
         src/core/PresenceEngine.cpp
 
+        # cli/ - portable status-file writer (also used headless, see --no-tray)
+        src/cli/StatusFile.cpp
+
         # platform/linux/ - MPRIS/D-Bus monitor, libcurl album art lookup,
         # XDG autostart, AppIndicator (GMenu/GAction) tray + menu, zenity/kdialog text prompt
         src/platform/linux/ConfigPaths.cpp
@@ -197,8 +200,10 @@ else()
         src/platform/linux/AppIndicatorTray.cpp
         src/platform/linux/TextPrompt.cpp
 
-        # platform/posix/ - Unix-socket IPC transport, shared with macOS
+        # platform/posix/ - Unix-socket IPC transport + daemon signaling,
+        # both shared with macOS
         src/platform/posix/UnixSocketIpcTransport.cpp
+        src/platform/posix/DaemonSignal.cpp
     )
 
     target_include_directories(featherrpc-native PRIVATE
@@ -224,4 +229,37 @@ else()
     # Output filename matches Windows/macOS so the installer script and any
     # cross-platform packaging tooling have one name to reason about.
     set_target_properties(featherrpc-native PROPERTIES OUTPUT_NAME "FeatherRPC")
+
+    # featherrpc-cli - the thin CLI control tool. No GTK/appindicator-glib
+    # link at all (this is the concrete way the headless daemon path stays
+    # free of the tray dependency stack) and no PresenceEngine/
+    # DiscordIpcClient - it never runs the engine, just talks to whatever's
+    # already running.
+    add_executable(featherrpc-cli
+        src/platform/linux/main_linux_cli.cpp
+
+        src/core/AppConfig.cpp
+
+        src/cli/CliDispatch.cpp
+        src/cli/StatusFile.cpp
+
+        src/platform/linux/ConfigPaths.cpp
+        src/platform/linux/MprisMediaSource.cpp
+        src/platform/linux/SystemdUserAutoLaunch.cpp
+        src/platform/posix/DaemonSignal.cpp
+    )
+
+    target_include_directories(featherrpc-cli PRIVATE
+        src
+        ${CMAKE_SOURCE_DIR}/third_party
+        ${DBUS_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(featherrpc-cli PRIVATE
+        ${DBUS_LIBRARIES}
+    )
+
+    target_compile_options(featherrpc-cli PRIVATE
+        ${DBUS_CFLAGS_OTHER}
+    )
 endif()

@@ -37,6 +37,33 @@ chmod +x "$INSTALL_DIR/$EXE_NAME"
 cp -f "$SCRIPT_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"
 chmod +x "$INSTALL_DIR/uninstall.sh"
 
+# featherrpc-cli goes in ~/.local/bin, not $INSTALL_DIR - it's meant to be
+# typed (`featherrpc-cli status`), and ~/.local/bin is on $PATH by default
+# on most systemd-based distros, unlike $XDG_DATA_HOME.
+if [ -f "$SOURCE_DIR/featherrpc-cli" ]; then
+    mkdir -p "$HOME/.local/bin"
+    cp -f "$SOURCE_DIR/featherrpc-cli" "$HOME/.local/bin/featherrpc-cli"
+    chmod +x "$HOME/.local/bin/featherrpc-cli"
+
+    # Generated with the real resolved install path baked in, rather than
+    # shipping a static unit with a guessed path - $XDG_DATA_HOME isn't
+    # always ~/.local/share.
+    SYSTEMD_USER_DIR="$CONFIG_HOME/systemd/user"
+    mkdir -p "$SYSTEMD_USER_DIR"
+    cat > "$SYSTEMD_USER_DIR/featherrpcd.service" <<EOF
+[Unit]
+Description=FeatherRPC headless daemon (Discord Rich Presence from MPRIS)
+
+[Service]
+ExecStart=$INSTALL_DIR/$EXE_NAME --no-tray
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+EOF
+    systemctl --user daemon-reload 2>/dev/null || true
+fi
+
 if [ -f "$SOURCE_DIR/icon.png" ]; then
     ICON_DIR="$DATA_HOME/icons/hicolor/256x256/apps"
     mkdir -p "$ICON_DIR"
