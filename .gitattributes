@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# Windows-native scripts should stay CRLF - that's their expected format there.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Everything Linux/macOS runs directly needs a real Unix shebang line -
+# CRLF corrupts "#!/usr/bin/env bash" into a nonexistent "bash\r" interpreter.
+# This is what actually broke on a real machine (CachyOS) - see the commit
+# this file ships with for the exact failure.
+*.sh text eol=lf
+*.service text eol=lf
