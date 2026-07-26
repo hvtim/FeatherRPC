@@ -48,7 +48,9 @@ Right-click the tray icon:
   MPRIS-compliant player; macOS: Music.app only for now)
 - Broadcast on/off
 - Show track number on/off
-- Album art: automatic lookup, a custom image URL, or a static logo only
+- Album art: automatic lookup, a custom image URL, or a static fallback
+  image - and which asset to use for that fallback (see
+  [docs/AlbumArt.md](docs/AlbumArt.md))
 - Poll interval
 - Start at login
 - Show tray icon (Windows; toggling this off takes effect on the next
@@ -124,7 +126,9 @@ path is untested - open an issue if you hit build errors.
 - Sends the track to Discord as a "Listening to" Rich Presence activity with
   a live progress bar.
 - Looks up cover art via Apple's iTunes Search API (album, then track),
-  regardless of platform or media source.
+  regardless of platform or media source. See
+  [docs/AlbumArt.md](docs/AlbumArt.md) for how the fallback image works
+  when that lookup misses.
 - Spotify is excluded on every platform - it has its own Discord
   integration.
 

@@ -43,6 +43,9 @@ Get or set how cover art is chosen:
   lookup if no URL has been set.
 - `off` - always use the `icon` image, never look anything up.
 
+See [AlbumArt.md](AlbumArt.md) for how each mode actually resolves an
+image.
+
 ### `arturl get` / `arturl set <url>`
 
 Get or set the image URL used when `artmode` is `custom`. Ignored in any
@@ -53,7 +56,9 @@ other art mode.
 Get or set the Rich Presence asset key used as the static image (when
 `artmode` is `off`) and as the automatic-lookup fallback. Must be an asset
 key already uploaded to your Discord application's Rich Presence Art
-Assets, not an arbitrary image or URL.
+Assets, not an arbitrary image or URL - see
+[AlbumArt.md](AlbumArt.md#the-fallback-image). Also settable from the
+tray menu's Album Art > "Set Fallback Image Key..." prompt.
 
 ### `pollinterval get` / `pollinterval set <ms>`
 
