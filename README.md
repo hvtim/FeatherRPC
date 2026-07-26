@@ -2,25 +2,21 @@
 
 # FeatherRPC
 
-A lightweight, native Discord Rich Presence bridge for whatever's actually
-playing - iTunes, VLC, browsers, or any other app reporting now-playing info
-to your OS on Windows; any MPRIS-compliant player on Linux; Music.app on
-macOS. No managed runtime, no bundled GUI toolkit - idle memory use is in
-the low single-digit megabytes, not the tens of megabytes a .NET or Electron
-build costs.
+Syncs whatever's currently playing to Discord as a Rich Presence status.
+iTunes, VLC, browsers, or anything else that reports now-playing info to
+Windows; any MPRIS player on Linux; Music.app on macOS. Native C++, no
+runtime, no bundled GUI toolkit. Idle memory use is a few megabytes.
 
 > Built with the help of [Claude Code](https://claude.com/claude-code)
 > (Anthropic's AI coding agent).
 
-Previously shipped as **iTunes-RPC**, an iTunes-only Windows tool. Renamed
-and rewritten from the ground up to reflect its actual scope. Full history
-of the old project is preserved at the archived
-[hvtim/iTunes-RPC](https://github.com/hvtim/iTunes-RPC) repository, including
-its own `CHANGELOG.md` and `KNOWN_ISSUES.md`.
+Used to be called iTunes-RPC and only worked with iTunes on Windows.
+Renamed and rewritten to match what it actually does now. The old project's
+history, including its own `CHANGELOG.md` and `KNOWN_ISSUES.md`, is kept at
+the archived [hvtim/iTunes-RPC](https://github.com/hvtim/iTunes-RPC) repo.
 
-**Status: v0.1.0, not yet production-stable.** See [KNOWN_ISSUES.md](KNOWN_ISSUES.md)
-for exactly what's verified versus what isn't on each platform before relying
-on this.
+**v0.1.0, not production-stable.** Check [KNOWN_ISSUES.md](KNOWN_ISSUES.md)
+for what's actually verified on each platform before relying on this.
 
 ## Install
 
@@ -94,7 +90,7 @@ hardware.
 
 macOS: `cmake -B build -G Xcode && cmake --build build --config Release`
 produces a `FeatherRPC.app` bundle. Requires Xcode command line tools. This
-path is genuinely untested - please open an issue if you hit build errors.
+path is untested - open an issue if you hit build errors.
 
 ## How it works
 
@@ -119,6 +115,6 @@ Full detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Headlines:
 - macOS is code-complete but has never been built or run - no Mac hardware
   was available during development.
 - Linux tray rendering has never been visually confirmed on a real desktop.
-- A genuine background Windows *service* is not possible for this app -
-  Session 0 isolation blocks access to the interactive user's iTunes/SMTC
-  session. Headless mode is a login-launched process instead, not `sc.exe`.
+- No real Windows *service* here - Session 0 isolation blocks access to the
+  interactive user's iTunes/SMTC session. Headless mode is a login-launched
+  process, not `sc.exe`.
