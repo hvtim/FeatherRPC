@@ -99,14 +99,43 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // Mode-agnostic pidfile: written here too (not just in the headless
+    // branch above) so `featherrpc status`/`appid set`/etc. always find a
+    // running instance regardless of which mode it's actually in - no
+    // special-casing in the CLI dispatcher for "is the target headless or
+    // tray-mode?" because there's nothing left for it to detect. Deliberately
+    // NOT DaemonBlockSignalsAndWritePidFile() - that also blocks
+    // SIGHUP/SIGTERM/SIGINT for a sigwait() loop, which would starve
+    // SniTray's g_unix_signal_add below (see RunMessageLoop()).
+    platform_posix::DaemonWritePidFile();
+
     platform_linux::DesktopAutoLaunch autoLaunch;
 
     nativeui::SniTray tray;
     if (!tray.Create("featherrpc")) {
         core::Log::Write("[error] Failed to create the tray icon.");
+        platform_posix::DaemonRemovePidFile();
         return 1;
     }
     tray.SetInitialState(config, autoLaunch.IsEnabled());
+
+    // Mirrors the headless reload loop below, but triggered by SniTray's
+    // own g_unix_signal_add(SIGHUP, ...) instead of a sigwait() loop (see
+    // RunMessageLoop()) - this is the actual live-reload-while-tray-is-
+    // running path the CLI was missing entirely before this change.
+    tray.OnReloadRequested = [&] {
+        core::AppConfig newConfig = core::LoadConfig(core::GetConfigFilePath());
+        config = newConfig;
+        applyConfig(newConfig);
+        // Unlike OnConfigChanged (which fires from inside the tray's own
+        // menu handling, where its internal config_ is already current),
+        // this reload originates externally from the CLI - push the new
+        // config into the tray's own display state too, so the menu's
+        // checkboxes reflect it next time it's opened instead of showing
+        // stale values.
+        tray.SetInitialState(config, autoLaunch.IsEnabled());
+        core::Log::Write("Reloaded config.");
+    };
 
     tray.OnConfigChanged = [&](const core::AppConfig& newConfig) {
         if (newConfig.trayEnabled != config.trayEnabled) {
@@ -128,11 +157,20 @@ int main(int argc, char** argv) {
 
     tray.OnRefreshMediaSources = [] { return platform_linux::MprisMediaSource::GetAvailableSources(); };
 
-    engine.OnStatusChanged = [&] { tray.PostStatusUpdate("FeatherRPC - " + engine.Status()); };
+    // Both sinks, same as the pidfile above: the tray tooltip for the user,
+    // and the status file for `featherrpc status` - previously only the
+    // headless branch wrote the latter, so status in tray mode fell back to
+    // "no status reported yet" even though the pidfile now proves it's
+    // actually running.
+    engine.OnStatusChanged = [&] {
+        tray.PostStatusUpdate("FeatherRPC - " + engine.Status());
+        cli::WriteStatusFile(engine.Status());
+    };
 
     engine.Start();
     int exitCode = tray.RunMessageLoop();
     engine.Stop();
+    platform_posix::DaemonRemovePidFile();
 
     core::Log::Write("Exiting.");
     curl_global_cleanup();

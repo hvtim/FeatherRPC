@@ -37,20 +37,24 @@ chmod +x "$INSTALL_DIR/$EXE_NAME"
 cp -f "$SCRIPT_DIR/uninstall.sh" "$INSTALL_DIR/uninstall.sh"
 chmod +x "$INSTALL_DIR/uninstall.sh"
 
-# featherrpc-cli goes in ~/.local/bin, not $INSTALL_DIR - it's meant to be
-# typed (`featherrpc-cli status`), and ~/.local/bin is on $PATH by default
-# on most systemd-based distros, unlike $XDG_DATA_HOME.
-if [ -f "$SOURCE_DIR/featherrpc-cli" ]; then
+# featherrpc (the CLI tool, not "featherrpc-cli" - Linux filesystems are
+# case-sensitive so this doesn't collide with $INSTALL_DIR/$EXE_NAME, unlike
+# Windows) goes in ~/.local/bin, not $INSTALL_DIR - it's meant to be typed
+# (`featherrpc status`), and ~/.local/bin is on $PATH by default on most
+# systemd-based distros, unlike $XDG_DATA_HOME.
+if [ -f "$SOURCE_DIR/featherrpc" ]; then
     mkdir -p "$HOME/.local/bin"
-    cp -f "$SOURCE_DIR/featherrpc-cli" "$HOME/.local/bin/featherrpc-cli"
-    chmod +x "$HOME/.local/bin/featherrpc-cli"
+    cp -f "$SOURCE_DIR/featherrpc" "$HOME/.local/bin/featherrpc"
+    chmod +x "$HOME/.local/bin/featherrpc"
 
     # Generated with the real resolved install path baked in, rather than
     # shipping a static unit with a guessed path - $XDG_DATA_HOME isn't
-    # always ~/.local/share.
+    # always ~/.local/share. User-scope unit ("--user" below and in every
+    # message about it) - there is no system-wide install path here, so
+    # `sudo systemctl ...` against this unit will always say "not found".
     SYSTEMD_USER_DIR="$CONFIG_HOME/systemd/user"
     mkdir -p "$SYSTEMD_USER_DIR"
-    cat > "$SYSTEMD_USER_DIR/featherrpcd.service" <<EOF
+    cat > "$SYSTEMD_USER_DIR/featherrpc.service" <<EOF
 [Unit]
 Description=FeatherRPC headless daemon (Discord Rich Presence from MPRIS)
 
@@ -62,6 +66,9 @@ Restart=on-failure
 WantedBy=default.target
 EOF
     systemctl --user daemon-reload 2>/dev/null || true
+    echo "Registered the featherrpc.service systemd user unit (headless mode, not enabled by default)."
+    echo "Enable it with: featherrpc autostart on"
+    echo "  (equivalent to: systemctl --user enable --now featherrpc.service)"
 fi
 
 if [ -f "$SOURCE_DIR/icon.png" ]; then

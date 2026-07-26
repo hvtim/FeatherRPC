@@ -71,8 +71,31 @@ featherrpc-cli autostart on
 featherrpc-cli daemon stop
 ```
 
-Run `featherrpc-cli` with no arguments for the full command list. Linux and
-macOS ship the same `featherrpc-cli` tool.
+Run `featherrpc-cli` with no arguments for the full command list. macOS
+ships the same `featherrpc-cli` tool.
+
+## CLI control (Linux)
+
+Linux ships the control tool as plain `featherrpc` (not `featherrpc-cli` -
+Linux filesystems are case-sensitive, so it doesn't collide with the
+`FeatherRPC` tray binary the way it would on Windows). It works against a
+running instance in either mode, tray or headless (`--no-tray`) - there's
+nothing to pick between, it just finds whichever is running:
+
+```
+featherrpc appid set <your-discord-app-id>
+featherrpc status
+featherrpc pollinterval set 5000
+featherrpc autostart on
+featherrpc daemon stop
+```
+
+Run `featherrpc` with no arguments for the full command list. `autostart`
+manages the `featherrpc.service` systemd **user** unit for headless mode -
+use `systemctl --user ...` against it, never `sudo systemctl ...` (there is
+no system-wide unit by this name). The default tray-mode autostart (XDG
+autostart, set from the tray menu's "Start at login") is separate from this
+and unaffected.
 
 ## Build from source
 

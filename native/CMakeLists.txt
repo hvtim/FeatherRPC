@@ -260,11 +260,16 @@ else()
     # cross-platform packaging tooling have one name to reason about.
     set_target_properties(featherrpc-native PROPERTIES OUTPUT_NAME "FeatherRPC")
 
-    # featherrpc-cli - the thin CLI control tool. No gio-2.0/GTK link at
-    # all (this is the concrete way the headless daemon path stays free of
-    # the tray dependency stack) and no PresenceEngine/DiscordIpcClient -
-    # it never runs the engine, just talks to whatever's already running.
-    add_executable(featherrpc-cli
+    # featherrpc - the thin CLI control tool. Named "featherrpc", not
+    # "featherrpc-cli" like Windows/macOS - Linux filesystems are
+    # case-sensitive, so this doesn't collide with the "FeatherRPC" tray/
+    # daemon binary above the way it would on Windows (see KNOWN_ISSUES.md's
+    # "case-insensitive filename collision" entry for why Windows/macOS keep
+    # the "-cli" suffix and must not drop it). No gio-2.0/GTK link at all
+    # (this is the concrete way the headless daemon path stays free of the
+    # tray dependency stack) and no PresenceEngine/DiscordIpcClient - it
+    # never runs the engine, just talks to whatever's already running.
+    add_executable(featherrpc
         src/platform/linux/main_linux_cli.cpp
 
         src/core/AppConfig.cpp
@@ -278,17 +283,17 @@ else()
         src/platform/posix/DaemonSignal.cpp
     )
 
-    target_include_directories(featherrpc-cli PRIVATE
+    target_include_directories(featherrpc PRIVATE
         src
         ${CMAKE_SOURCE_DIR}/third_party
         ${DBUS_INCLUDE_DIRS}
     )
 
-    target_link_libraries(featherrpc-cli PRIVATE
+    target_link_libraries(featherrpc PRIVATE
         ${DBUS_LIBRARIES}
     )
 
-    target_compile_options(featherrpc-cli PRIVATE
+    target_compile_options(featherrpc PRIVATE
         ${DBUS_CFLAGS_OTHER}
     )
 endif()

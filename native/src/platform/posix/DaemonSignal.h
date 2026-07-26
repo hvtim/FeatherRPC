@@ -13,13 +13,24 @@ public:
     bool RequestQuit() override;
 };
 
+// Mode-agnostic: writes the pidfile only, no signal blocking. Safe to call
+// from tray mode too - unlike the headless path below, tray mode must keep
+// signals deliverable normally so GLib's g_unix_signal_add (see SniTray.cpp)
+// can pick up SIGHUP/SIGTERM/SIGINT itself; blocking them here would starve
+// that mechanism. This is what makes the CLI's `IsRunning`/`RequestReload`/
+// `RequestQuit` work identically regardless of which mode the target
+// process is actually running in - same pidfile, same path, written
+// unconditionally on startup in either mode.
+void DaemonWritePidFile();
+
 // Daemon-side (the long-running app itself), used only when running
 // headless (see main_*_daemon paths). Must be called before
 // PresenceEngine::Start() - blocks SIGHUP/SIGTERM/SIGINT so they're never
 // delivered asynchronously to arbitrary code on another thread (running a
 // signal handler mid-allocation/mid-mutex-lock is undefined behavior);
 // the blocked mask is inherited by every thread spawned afterward,
-// including PresenceEngine's worker. Also writes the pidfile.
+// including PresenceEngine's worker. Also writes the pidfile (via
+// DaemonWritePidFile() above).
 void DaemonBlockSignalsAndWritePidFile();
 
 enum class DaemonSignalKind { Reload, Quit };

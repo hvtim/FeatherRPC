@@ -52,6 +52,12 @@ bool PosixDaemonSignal::RequestQuit() {
     return pid && kill(*pid, SIGTERM) == 0;
 }
 
+void DaemonWritePidFile() {
+    std::filesystem::create_directories(core::GetConfigDirectory());
+    std::ofstream file(core::GetPidFilePath());
+    file << static_cast<long>(getpid());
+}
+
 void DaemonBlockSignalsAndWritePidFile() {
     sigset_t set;
     sigemptyset(&set);
@@ -65,9 +71,7 @@ void DaemonBlockSignalsAndWritePidFile() {
     // sigwait() on a specific thread instead of signal()/sigaction().
     sigprocmask(SIG_BLOCK, &set, nullptr);
 
-    std::filesystem::create_directories(core::GetConfigDirectory());
-    std::ofstream file(core::GetPidFilePath());
-    file << static_cast<long>(getpid());
+    DaemonWritePidFile();
 }
 
 DaemonSignalKind DaemonWaitForSignal() {

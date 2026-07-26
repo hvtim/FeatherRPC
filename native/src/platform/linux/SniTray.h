@@ -59,7 +59,9 @@ public:
     // marshaling.
     void PostStatusUpdate(const std::string& text);
 
-    // Runs the GLib main loop until Exit is chosen. Blocks the calling thread.
+    // Runs the GLib main loop until Exit is chosen (or SIGTERM/SIGINT is
+    // received - see RunMessageLoop()'s g_unix_signal_add hookup). Blocks
+    // the calling thread.
     int RunMessageLoop();
 
     // Dispatches a dbusmenu item id (as delivered by the host's Event
@@ -74,15 +76,29 @@ public:
     std::function<void(std::string&)> OnEditCustomArtUrl;
     std::function<std::vector<core::MediaSourceInfo>()> OnRefreshMediaSources;
 
+    // Invoked on the main thread (via g_unix_signal_add, from inside
+    // RunMessageLoop) when SIGHUP arrives - the tray-mode equivalent of
+    // main_linux.cpp's headless reload loop, so `featherrpc appid set`
+    // etc. reach a running tray instance too, not just a headless one.
+    std::function<void()> OnReloadRequested;
+
 private:
     // One dbusmenu item. Built fresh into rootMenu_ by RebuildMenuTree()
     // every time config/media-source state changes or the host is about
-    // to display the menu (AboutToShow) - ids are only meaningful between
-    // one rebuild and the next GetLayout call, matching how the host is
-    // expected to always re-fetch the layout after AboutToShow/
-    // LayoutUpdated. Held by unique_ptr (not by value) inside
-    // std::vector<> so that menuIndex_'s raw pointers into this tree
-    // stay valid even as siblings are appended and the vector reallocates.
+    // to display the menu (AboutToShow). IDs are assigned from nextMenuId_,
+    // which is deliberately NEVER reset across rebuilds (see its own
+    // comment) - a live desktop test found that reusing small ids across
+    // rebuilds, combined with the Media Source submenu's child count
+    // changing the position (and therefore the id) of every item after it,
+    // caused a real dbusmenu client to visibly misrender: a plain checkbox
+    // item ("Broadcast now playing to Discord") rendered as a submenu, and
+    // another ("Show tray icon") appeared twice. Every id this class ever
+    // hands out is unique for the lifetime of the SniTray object, not just
+    // between one rebuild and the next, specifically so a host that caches
+    // widgets by id across LayoutUpdated can never reuse a stale one.
+    // Held by unique_ptr (not by value) inside std::vector<> so that
+    // menuIndex_'s raw pointers into this tree stay valid even as siblings
+    // are appended and the vector reallocates.
     struct MenuNode {
         int id = 0;
         std::string label;
@@ -108,6 +124,8 @@ private:
     static GVariant* MenuGetPropertyThunk(GDBusConnection* connection, const char* sender, const char* objectPath,
         const char* interfaceName, const char* propertyName, GError** error, gpointer userData);
     static gboolean ApplyStatusUpdateThunk(gpointer data);
+    static gboolean OnSigHupThunk(gpointer data);
+    static gboolean OnSigQuitThunk(gpointer data);
 
     void HandleSniMethodCall(
         const std::string& methodName, GVariant* parameters, GDBusMethodInvocation* invocation);
@@ -150,6 +168,15 @@ private:
 
     MenuNode rootMenu_;
     std::map<int, MenuNode*> menuIndex_;
+    // Monotonically increasing for the lifetime of this object - RebuildMenuTree()
+    // must NOT reset this to 1. It used to, which is what caused the
+    // submenu-misrender/duplicate-item bugs described on MenuNode above:
+    // the Media Source submenu's child count varies (it tracks live MPRIS
+    // players), so resetting ids each rebuild meant every item after it
+    // landed on a different id than before, and a dbusmenu client that
+    // caches widgets by id across rebuilds could reuse a stale one with
+    // the wrong shape (submenu vs. checkbox) or fail to discard the old
+    // one (duplicate item).
     int nextMenuId_ = 1;
     unsigned menuRevision_ = 0;
 };

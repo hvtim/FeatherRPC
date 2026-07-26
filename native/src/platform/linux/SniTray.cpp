@@ -2,7 +2,9 @@
 #include "core/Log.h"
 
 #include <gio/gio.h>
+#include <glib-unix.h>
 
+#include <csignal>
 #include <string>
 
 namespace nativeui {
@@ -230,7 +232,30 @@ void SniTray::PostStatusUpdate(const std::string& text) {
 
 int SniTray::RunMessageLoop() {
     loop_ = g_main_loop_new(nullptr, FALSE);
+
+    // Mode-agnostic daemon signaling (see DaemonSignal.h) needs the CLI's
+    // SIGHUP/SIGTERM/SIGINT to reach a *tray-mode* instance too, but the
+    // main thread here is busy running this loop, not blocked in
+    // sigwait() the way the headless path's DaemonWaitForSignal() is.
+    // g_unix_signal_add (glib-unix.h) is GLib's own signal-to-GSource
+    // integration: it lets the main loop dispatch the callback natively,
+    // on this thread, with no dedicated waiter thread and no g_idle_add
+    // hop required to get back onto it - the simplest fit given the tray
+    // already lives entirely on this loop after the SNI rewrite.
+    // SIGHUP keeps watching (G_SOURCE_CONTINUE) so every reload for the
+    // rest of the process's life keeps working, not just the first one.
+    guint sigHupId = g_unix_signal_add(SIGHUP, OnSigHupThunk, this);
+    // SIGTERM/SIGINT already terminated the process by default disposition
+    // before this existed; routing them through the loop instead makes
+    // that quit path go through the same clean shutdown as the "Exit" menu
+    // item (engine.Stop() + pidfile removal in main_linux.cpp), which
+    // matters now that tray mode writes a pidfile at all.
+    g_unix_signal_add(SIGTERM, OnSigQuitThunk, this);
+    g_unix_signal_add(SIGINT, OnSigQuitThunk, this);
+
     g_main_loop_run(loop_);
+
+    g_source_remove(sigHupId);
     g_main_loop_unref(loop_);
     loop_ = nullptr;
     return 0;
@@ -240,6 +265,23 @@ gboolean SniTray::ApplyStatusUpdateThunk(gpointer data) {
     auto* payload = static_cast<StatusUpdatePayload*>(data);
     payload->tray->ApplyStatusUpdateNow(payload->text);
     delete payload;
+    return G_SOURCE_REMOVE;
+}
+
+gboolean SniTray::OnSigHupThunk(gpointer data) {
+    auto* tray = static_cast<SniTray*>(data);
+    core::Log::Write("Received SIGHUP - reloading config.");
+    if (tray->OnReloadRequested) {
+        tray->OnReloadRequested();
+    }
+    return G_SOURCE_CONTINUE;
+}
+
+gboolean SniTray::OnSigQuitThunk(gpointer data) {
+    auto* tray = static_cast<SniTray*>(data);
+    if (tray->loop_) {
+        g_main_loop_quit(tray->loop_);
+    }
     return G_SOURCE_REMOVE;
 }
 
@@ -381,7 +423,11 @@ void SniTray::RefreshMediaSourcesAndRebuild() {
 
 void SniTray::RebuildMenuTree() {
     menuIndex_.clear();
-    nextMenuId_ = 1;
+    // Deliberately NOT resetting nextMenuId_ here - see its declaration in
+    // SniTray.h for why reusing small ids across rebuilds caused real
+    // dbusmenu-client rendering bugs (a checkbox showing as a submenu, a
+    // duplicated item) once the Media Source submenu's live-refreshed
+    // child count started shifting every id after it between rebuilds.
     ++menuRevision_;
 
     rootMenu_ = MenuNode{};

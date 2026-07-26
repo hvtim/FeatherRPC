@@ -25,13 +25,14 @@ debt - none of it is glossed over.
   `native/src/platform/macos/Info.plist.in` has no `CFBundleIconFile` key.
   The shipped `.app` shows the generic macOS document icon - in Finder, the
   Dock, and the `.dmg` window itself - until this is done on Mac hardware.
-- **Linux tray rendering has never been seen.** Compile and run verification
-  happened via WSL (no display server at all), so while the app starts
-  clean, writes logs correctly, and the graceful-degradation path is
-  confirmed working (see below), nobody has looked at the tray icon render
-  outside WSL. The plan's 3-configuration test matrix (KDE Plasma 6/Wayland,
-  vanilla GNOME/Wayland with no extension, GNOME with the AppIndicator
-  extension) has not been walked.
+- **Linux tray rendering: confirmed on one real desktop, not the other two.**
+  KDE Plasma 6 on CachyOS is now confirmed working end-to-end (tray icon
+  renders, menu opens, the SNI/dbusmenu rewrite talks to the real
+  `org.kde.StatusNotifierItem` host) - that live test is what surfaced the
+  CLI-reload gap fixed elsewhere in this file. The other two legs of the
+  original 3-configuration matrix (vanilla GNOME/Wayland with no extension,
+  GNOME with the AppIndicator extension) remain unwalked; everything for
+  those two is still WSL-only compile/link verification, no display server.
 - **Windows ARM64 has never run on ARM64 hardware.** It cross-compiles
   cleanly and the resulting binary's PE header machine type is confirmed
   `IMAGE_FILE_MACHINE_ARM64` (0xAA64), but COM/iTunes automation and
@@ -188,6 +189,29 @@ debt - none of it is glossed over.
 - **`std::atoi` UB in CLI argument parsing.** `pollinterval set <ms>` used
   `std::atoi`, undefined behavior on overflow and unable to distinguish
   invalid input from a literal "0". Fixed via `std::from_chars`.
+- **Linux: CLI couldn't reach a running tray-mode instance at all.** Found
+  live on a real CachyOS/KDE Plasma 6 desktop, the first real desktop this
+  Linux port was ever tested on: tray mode never wrote a pidfile and never
+  listened for `SIGHUP`, since `sigwait()` (headless mode's whole event
+  loop) would have blocked the main thread the GLib main loop needs for the
+  tray. `featherrpc appid set <id>` reported "not running" while the tray
+  was genuinely running, with no way to apply a change short of restarting
+  the app. Fixed by writing the pidfile unconditionally in both modes and,
+  for tray mode specifically, using `g_unix_signal_add` (`glib-unix.h`) to
+  hook SIGHUP/SIGTERM/SIGINT directly into the existing GLib main loop -
+  chosen over a background `sigwait()` thread plus a `g_idle_add` hop back
+  to the main thread, since the tray already runs entirely on this loop and
+  `g_unix_signal_add` dispatches on it natively with no cross-thread
+  marshaling needed at all.
+- **Linux: `featherrpc-cli` renamed to `featherrpc`.** Windows/macOS keep
+  the `-cli` suffix for the reason in the entry above this one (filesystem
+  case-insensitivity); Linux's filesystem is case-sensitive, so `featherrpc`
+  (the CLI) and `FeatherRPC` (the tray/daemon binary) can't collide there.
+  The systemd user unit was also renamed from `featherrpcd.service` to
+  `featherrpc.service` for the same before/after consistency, after a
+  `sudo systemctl restart featherrpc` (wrong scope *and* wrong name) against
+  the old name produced a confusing "unit not found" during the same test
+  session.
 
 ## Design decisions that were tried, then deliberately reversed
 

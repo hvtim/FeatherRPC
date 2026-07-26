@@ -16,8 +16,8 @@
 namespace {
 
 // The CLI tool is installed next to the main app binary - resolves
-// FeatherRPC relative to featherrpc-cli's own directory rather than
-// assuming a fixed install path.
+// FeatherRPC relative to featherrpc's own directory rather than assuming a
+// fixed install path.
 std::filesystem::path AppExePath() {
     char buf[4096] = {};
     ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);

@@ -12,18 +12,18 @@ echo "Uninstalling FeatherRPC..."
 pkill -x "$EXE_NAME" 2>/dev/null
 sleep 0.3
 
-SYSTEMD_UNIT="$CONFIG_HOME/systemd/user/featherrpcd.service"
+SYSTEMD_UNIT="$CONFIG_HOME/systemd/user/featherrpc.service"
 if [ -f "$SYSTEMD_UNIT" ]; then
-    systemctl --user disable --now featherrpcd.service 2>/dev/null
+    systemctl --user disable --now featherrpc.service 2>/dev/null
     rm -f "$SYSTEMD_UNIT"
     systemctl --user daemon-reload 2>/dev/null || true
-    echo "Removed and disabled the featherrpcd systemd user unit."
+    echo "Removed and disabled the featherrpc.service systemd user unit."
 fi
 
-CLI_PATH="$HOME/.local/bin/featherrpc-cli"
+CLI_PATH="$HOME/.local/bin/featherrpc"
 if [ -f "$CLI_PATH" ]; then
     rm -f "$CLI_PATH"
-    echo "Removed featherrpc-cli."
+    echo "Removed the featherrpc CLI tool."
 fi
 
 AUTOSTART_FILE="$CONFIG_HOME/autostart/FeatherRPC.desktop"
