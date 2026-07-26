@@ -2,9 +2,9 @@
 
 Full history of this project under its original name and scope, **iTunes-RPC**
 (an iTunes-specific Discord Rich Presence tool for Windows). Preserved here
-before the project was rebranded to **FeatherRPC** to reflect its actual
-current scope: a lightweight, native, cross-platform Rich Presence bridge for
-any media source, not just iTunes. See the FeatherRPC repository for
+before the project was rebranded to **FeatherRPC** to reflect its current
+scope: a lightweight, native, cross-platform Rich Presence bridge for any
+media source, not just iTunes. See the FeatherRPC repository for
 development after this point.
 
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
@@ -16,7 +16,7 @@ starting at 0.1.0.
 Fresh repository, fresh SemVer starting point. Renamed from iTunes-RPC to
 FeatherRPC (product identity only - `ITunesMediaSource`, `MusicApplication.h`,
 and the `mediaSource: "iTunes"` config value are unchanged, since they name
-the real Apple app as one of several supported sources, not this project).
+Apple's app as one of several supported sources, not this project).
 Baseline is the Windows tray build plus the headless CLI/daemon mode below,
 carried forward unchanged in behavior. Legacy C# source dropped entirely -
 its full history lives in this file and in the archived
@@ -46,7 +46,7 @@ rewrite below:
   "0" - replaced with `std::from_chars`.
 - Fixed (before ever shipping): `ShellLinkAutoLaunch`/`LaunchAgentAutoLaunch`
   hardcoded "target = whichever process calls this," which would have
-  registered autostart for the short-lived CLI tool instead of the real app
+  registered autostart for the short-lived CLI tool instead of the app
   the moment the CLI tool called `autostart on`.
 - Fixed (Windows-specific, found during this work): `iTunesRPC.exe` and
   `itunesrpc.exe` collided on Windows' case-insensitive filesystem - one
@@ -65,8 +65,8 @@ instead of the .NET CLR's ~32MB baseline. Cross-platform for the first time:
   preserved with the exact create-and-release-per-poll pattern from 1d892d8
   (see below) - this is load-bearing, not incidental. SMTC via C++/WinRT
   instead of the old WinRT.Runtime.dll/Microsoft.Windows.SDK.NET.dll
-  dependency, which is now gone entirely. Verified end-to-end against real
-  iTunes and SMTC playback and a real Discord account.
+  dependency, which is now gone entirely. Verified end-to-end against
+  iTunes and SMTC playback and a Discord account.
 - **Linux**: MPRIS over D-Bus (works with any MPRIS-compliant player, not a
   single hardcoded app), native tray via StatusNotifierItem
   (`libayatana-appindicator-glib`, zero GTK dependency after a mid-development
@@ -80,8 +80,8 @@ instead of the .NET CLR's ~32MB baseline. Cross-platform for the first time:
   deliberate scope decision, not an oversight). `NSStatusItem` + `NSMenu`
   tray. **Entirely unbuilt and unrun** - no Mac hardware existed anywhere in
   the development environment at any point.
-- Windows ARM64 cross-compiles clean and produces a genuine ARM64 PE binary;
-  never run on real ARM64 hardware.
+- Windows ARM64 cross-compiles clean and produces an ARM64 PE binary; never
+  run on ARM64 hardware.
 - Installer ported: Windows keeps the Registry Uninstall-key/Start Menu/
   Desktop/Startup-shortcut approach, now via native `IShellLinkW` instead of
   `WScript.Shell`; Linux/macOS get their own install/uninstall scripts.
@@ -98,11 +98,11 @@ instead of the .NET CLR's ~32MB baseline. Cross-platform for the first time:
   to Windows (VLC, browsers, etc.), selectable from Settings. Spotify
   excluded (it has its own Discord integration). Required retargeting to
   net8.0-windows10.0.19041.0 for the Windows Runtime APIs.
-- Fixed a real crash: pasting into the Application ID field threw an STA
+- Fixed a crash: pasting into the Application ID field threw an STA
   threading exception because `Main` wasn't `[STAThread]`.
 - Fixed: settings didn't apply live until an unrelated change forced a
   resend - cosmetic-only changes now force an immediate resend instead of
-  waiting for the next real track change or the 60s keepalive.
+  waiting for the next track change or the 60s keepalive.
 - Registers in Windows Settings > Apps > Installed apps, per-user, no admin
   required; uninstall defers deleting its own directory to a detached
   process since the uninstaller runs from inside the folder it removes.
@@ -126,13 +126,13 @@ there's no album tag or the album search finds nothing.
 
 ## [1.0.1] - fix silently-swallowed activity failures
 
-`SetActivity`/`ClearActivity` now report whether the IPC write actually
-succeeded. Previously a failed write was marked "sent" anyway, deferring the
-next retry a full 60s instead of the next 2s poll - a likely contributor to
+`SetActivity`/`ClearActivity` now report whether the IPC write succeeded.
+Previously a failed write was marked "sent" anyway, deferring the next
+retry a full 60s instead of the next 2s poll - a likely contributor to
 album art intermittently disappearing on longer sessions. Added persistent
 file logging (`itunes-sync.log` next to the exe), since the app runs
 windowless via autorun and there was previously no way to inspect what
-happened during a real session.
+happened during a session.
 
 ## [1.0.0] - initial release
 
