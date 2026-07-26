@@ -423,17 +423,36 @@ void SniTray::RefreshMediaSourcesAndRebuild() {
 
 void SniTray::RebuildMenuTree() {
     menuIndex_.clear();
-    // Deliberately NOT resetting nextMenuId_ here - see its declaration in
-    // SniTray.h for why reusing small ids across rebuilds caused real
-    // dbusmenu-client rendering bugs (a checkbox showing as a submenu, a
-    // duplicated item) once the Media Source submenu's live-refreshed
-    // child count started shifting every id after it between rebuilds.
     ++menuRevision_;
 
     rootMenu_ = MenuNode{};
     rootMenu_.id = 0;
 
+    // Deliberately a fresh LOCAL counter, restarted at 1 every single
+    // call - unlike nextMenuId_ (see its declaration in SniTray.h). Every
+    // static item below (everything except the loop over mediaSources_)
+    // is added in the exact same order every rebuild, so restarting this
+    // counter at 1 gives each static item, including the "Media Source"
+    // submenu item itself, the SAME id on every rebuild. That stability is
+    // what lets GetLayout(parentId=<Media Source's id>) keep resolving
+    // correctly after any later rebuild - see the fallback-to-root bug
+    // this fixed, documented on nextMenuId_ in SniTray.h.
+    int staticId = 1;
     auto addChild = [&](MenuNode& parent) -> MenuNode& {
+        auto node = std::make_unique<MenuNode>();
+        node->id = staticId++;
+        MenuNode& ref = *node;
+        menuIndex_[ref.id] = &ref;
+        parent.children.push_back(std::move(node));
+        return ref;
+    };
+
+    // Media Source's own children are the one part of the tree whose
+    // count genuinely changes (live MPRIS players) - these get ids from
+    // nextMenuId_'s separate, never-reset, never-overlapping range instead
+    // of the static counter above, so a variable number of them never
+    // shifts any static item's id.
+    auto addDynamicChild = [&](MenuNode& parent) -> MenuNode& {
         auto node = std::make_unique<MenuNode>();
         node->id = nextMenuId_++;
         MenuNode& ref = *node;
@@ -454,7 +473,7 @@ void SniTray::RebuildMenuTree() {
     sourceMenu.label = "Media Source";
     sourceMenu.isSubmenu = true;
     for (const auto& source : mediaSources_) {
-        MenuNode& item = addChild(sourceMenu);
+        MenuNode& item = addDynamicChild(sourceMenu);
         item.label = source.displayName;
         item.command = "media-source";
         item.stringValue = source.id;
@@ -769,7 +788,19 @@ void SniTray::HandleMenuMethodCall(
 
         MenuNode* node = FindNodeById(parentId);
         if (!node) {
-            node = &rootMenu_;
+            // Deliberately an error, NOT a silent fallback to rootMenu_ -
+            // that fallback used to be here, and it's exactly what turned
+            // a stale/unknown id into a real bug: the reply's top-level
+            // node would be the ROOT menu, but the host had asked for (and
+            // renders this as) the children of whatever item it thinks
+            // parentId is - e.g. opening "Media Source" showed a full
+            // duplicate of the entire root menu instead of an empty or
+            // correct submenu. A stale id should fail visibly (empty
+            // submenu, or a logged error), never silently substitute
+            // unrelated content.
+            g_dbus_method_invocation_return_error(invocation, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS,
+                "No such menu item id %d", parentId);
+            return;
         }
         GVariant* layout = BuildLayoutVariant(*node);
         g_dbus_method_invocation_return_value(

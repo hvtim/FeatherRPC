@@ -85,17 +85,35 @@ public:
 private:
     // One dbusmenu item. Built fresh into rootMenu_ by RebuildMenuTree()
     // every time config/media-source state changes or the host is about
-    // to display the menu (AboutToShow). IDs are assigned from nextMenuId_,
-    // which is deliberately NEVER reset across rebuilds (see its own
-    // comment) - a live desktop test found that reusing small ids across
-    // rebuilds, combined with the Media Source submenu's child count
-    // changing the position (and therefore the id) of every item after it,
-    // caused a real dbusmenu client to visibly misrender: a plain checkbox
-    // item ("Broadcast now playing to Discord") rendered as a submenu, and
-    // another ("Show tray icon") appeared twice. Every id this class ever
-    // hands out is unique for the lifetime of the SniTray object, not just
-    // between one rebuild and the next, specifically so a host that caches
-    // widgets by id across LayoutUpdated can never reuse a stale one.
+    // to display the menu (AboutToShow). Two real dbusmenu-client bugs
+    // were found here on a live desktop, both about ids, but distinct:
+    //
+    // 1. IDs used to be reused across rebuilds (a local counter reset to 1
+    // every call). Combined with the Media Source submenu's child count
+    // changing the position (and therefore the id) of every static item
+    // after it, a dbusmenu client that caches widgets by id across
+    // LayoutUpdated could reuse a stale one with the wrong shape: a plain
+    // checkbox item ("Broadcast now playing to Discord") rendered as a
+    // submenu, and another ("Show tray icon") appeared twice. Fixed by
+    // giving Media Source's children ids from nextMenuId_'s range, which
+    // is never reset for the SniTray object's whole lifetime (see its own
+    // comment) - no id this class hands out for a dynamic child is ever
+    // reused for a different item.
+    //
+    // 2. Separately, every *static* item's id used to change on every
+    // rebuild too (same root cause: one shared, ever-incrementing counter
+    // for everything). That meant "Media Source" itself never kept a
+    // stable id either, so a host's later GetLayout(parentId=<the id it
+    // had cached for Media Source>) stopped resolving after the next
+    // rebuild - HandleMenuMethodCall's GetLayout handler fell back to
+    // rootMenu_ when the requested id wasn't found, so opening the Media
+    // Source submenu showed a full duplicate of the entire root menu
+    // instead of the actual MPRIS player list. Fixed by giving every
+    // static item (including Media Source's own node) an id from
+    // RebuildMenuTree()'s separate local counter, which - unlike
+    // nextMenuId_ - IS restarted at 1 every rebuild; since the static
+    // items are added in the same order every time, restarting it
+    // reproduces the exact same ids every time instead of new ones.
     // Held by unique_ptr (not by value) inside std::vector<> so that
     // menuIndex_'s raw pointers into this tree stay valid even as siblings
     // are appended and the vector reallocates.
@@ -168,16 +186,36 @@ private:
 
     MenuNode rootMenu_;
     std::map<int, MenuNode*> menuIndex_;
-    // Monotonically increasing for the lifetime of this object - RebuildMenuTree()
-    // must NOT reset this to 1. It used to, which is what caused the
-    // submenu-misrender/duplicate-item bugs described on MenuNode above:
-    // the Media Source submenu's child count varies (it tracks live MPRIS
-    // players), so resetting ids each rebuild meant every item after it
-    // landed on a different id than before, and a dbusmenu client that
-    // caches widgets by id across rebuilds could reuse a stale one with
-    // the wrong shape (submenu vs. checkbox) or fail to discard the old
-    // one (duplicate item).
-    int nextMenuId_ = 1;
+    // Two disjoint id ranges, kept apart specifically to fix two different
+    // real dbusmenu-client bugs found on a live desktop:
+    //
+    // 1..999 ("static" range, RebuildMenuTree()'s own local counter, NOT
+    // this member): every item except the Media Source submenu's children
+    // is built by the exact same sequence of addChild() calls, in the same
+    // order, every single rebuild - so restarting that counter at 1 on
+    // every rebuild gives every static item (including the "Media Source"
+    // submenu item itself) the SAME id every time. This matters because a
+    // host that already has "Media Source" cached as id 2 from an earlier
+    // GetLayout will later call GetLayout(parentId=2) again to refresh
+    // just that submenu - if id 2 no longer existed in menuIndex_ (which
+    // it wouldn't, if this counter were the one being reset), the earlier
+    // fallback-to-root bug in HandleMenuMethodCall's GetLayout handler
+    // returned the WHOLE ROOT MENU mislabeled as the Media Source
+    // submenu's contents - i.e. opening Media Source showed a full
+    // duplicate of the entire root menu. Fixed by keeping "Media Source"
+    // (and every other static item) at a permanently stable id instead.
+    //
+    // 1000+ (this member, nextMenuId_): reserved for the Media Source
+    // submenu's children specifically - the one part of the tree whose
+    // count genuinely varies, tracking live MPRIS players. Deliberately
+    // never reset (see addDynamicChild in RebuildMenuTree()) for the
+    // separate reason in the MenuNode comment above: reusing small ids
+    // across rebuilds let a stale cached widget of the wrong shape get
+    // reattached to a reused id (a checkbox rendering as a submenu, an
+    // item appearing twice). The two fixes are independent but easy to
+    // conflate - this one is about the Media Source item's OWN id staying
+    // put; the MenuNode one is about ids never being handed out twice.
+    int nextMenuId_ = 1000;
     unsigned menuRevision_ = 0;
 };
 
