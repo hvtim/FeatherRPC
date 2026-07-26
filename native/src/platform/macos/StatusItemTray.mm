@@ -27,6 +27,7 @@ constexpr int kCmdToggleBroadcast = 3;
 constexpr int kCmdToggleTrackNumber = 4;
 constexpr int kCmdToggleStartAtLogin = 5;
 constexpr int kCmdExit = 6;
+constexpr int kCmdToggleTrayIcon = 7;
 constexpr int kCmdArtModeAuto = 200;
 constexpr int kCmdArtModeCustom = 201;
 constexpr int kCmdArtModeOff = 202;
@@ -140,6 +141,11 @@ void StatusItemTray::RebuildMenu() {
 
     [menu addItem:[NSMenuItem separatorItem]];
     addItem(@"Start automatically when you log in", kCmdToggleStartAtLogin, _startAtLogin);
+    // Labeled/checked as the positive ("Show"), not "Disable", so the
+    // checkmark reads naturally - checked means the icon is showing.
+    // Can't apply live (a running process can't drop its own status
+    // item mid-session), so this only takes effect on the next launch.
+    addItem(@"Show tray icon", kCmdToggleTrayIcon, _config.trayEnabled);
 
     [menu addItem:[NSMenuItem separatorItem]];
     addItem(@"Exit", kCmdExit, false);
@@ -210,6 +216,12 @@ void StatusItemTray::HandleCommand(int commandId) {
             OnStartAtLoginChanged(_startAtLogin);
         }
         RebuildMenu();
+        return;
+    }
+
+    if (commandId == kCmdToggleTrayIcon) {
+        _config.trayEnabled = !_config.trayEnabled;
+        NotifyConfigChanged();
         return;
     }
 
