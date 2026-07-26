@@ -24,6 +24,12 @@ if [ -d "$INSTALL_DIR/$APP_NAME" ]; then
     echo "Removed $INSTALL_DIR/$APP_NAME."
 fi
 
+CLI_PATH="$HOME/.local/bin/featherrpc-cli"
+if [ -f "$CLI_PATH" ]; then
+    rm -f "$CLI_PATH"
+    echo "Removed featherrpc-cli."
+fi
+
 echo ""
 echo "FeatherRPC has been fully uninstalled."
 echo "Nothing else on this machine was changed - Discord and Music.app themselves are untouched."

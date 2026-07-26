@@ -38,6 +38,15 @@ cp -R "$SOURCE_APP" "$INSTALL_DIR/$APP_NAME"
 
 EXE_PATH="$INSTALL_DIR/$APP_NAME/Contents/MacOS/FeatherRPC"
 
+# featherrpc-cli is a plain command-line tool, not part of the .app bundle
+# - installed to ~/.local/bin, matching the Linux installer's choice (may
+# need adding to $PATH manually on macOS, unlike most Linux distros).
+if [ -f "$SCRIPT_DIR/featherrpc-cli" ]; then
+    mkdir -p "$HOME/.local/bin"
+    cp -f "$SCRIPT_DIR/featherrpc-cli" "$HOME/.local/bin/featherrpc-cli"
+    chmod +x "$HOME/.local/bin/featherrpc-cli"
+fi
+
 if [ "$NO_AUTOSTART" -eq 0 ]; then
     mkdir -p "$HOME/Library/LaunchAgents"
     cat > "$PLIST_PATH" <<PLIST

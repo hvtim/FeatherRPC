@@ -129,6 +129,9 @@ elseif(APPLE)
         src/core/DiscordIpcClient.cpp
         src/core/PresenceEngine.cpp
 
+        # cli/ - portable status-file writer (also used headless, see --no-tray)
+        src/cli/StatusFile.cpp
+
         # platform/macos/ - Scripting Bridge Music.app monitor, LaunchAgent
         # autorun, NSStatusItem/NSMenu tray, NSAlert text-prompt dialog
         src/platform/macos/ConfigPaths.cpp
@@ -138,8 +141,10 @@ elseif(APPLE)
         src/platform/macos/StatusItemTray.mm
         src/platform/macos/TextPrompt.mm
 
-        # platform/posix/ - Unix-socket IPC transport, shared with Linux
+        # platform/posix/ - Unix-socket IPC transport + daemon signaling,
+        # both shared with Linux
         src/platform/posix/UnixSocketIpcTransport.cpp
+        src/platform/posix/DaemonSignal.cpp
     )
 
     target_include_directories(featherrpc-native PRIVATE
@@ -167,6 +172,29 @@ elseif(APPLE)
         MACOSX_BUNDLE_BUNDLE_VERSION "0.1.0"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.hvtim.featherrpc"
+    )
+
+    # featherrpc-cli - the thin CLI control tool. Plain C++, not Objective-
+    # C++ - it never touches Cocoa, so it doesn't need ARC/the Cocoa
+    # frameworks, and it's a plain command-line tool, not a .app bundle
+    # (no MACOSX_BUNDLE here, unlike the target above) - it needs to run
+    # from a terminal and return exit codes normally.
+    add_executable(featherrpc-cli
+        src/platform/macos/main_macos_cli.cpp
+
+        src/core/AppConfig.cpp
+
+        src/cli/CliDispatch.cpp
+        src/cli/StatusFile.cpp
+
+        src/platform/macos/ConfigPaths.cpp
+        src/platform/macos/LaunchAgentAutoLaunch.cpp
+        src/platform/posix/DaemonSignal.cpp
+    )
+
+    target_include_directories(featherrpc-cli PRIVATE
+        src
+        ${CMAKE_SOURCE_DIR}/third_party
     )
 
 else()
