@@ -11,12 +11,12 @@ runtime, no bundled GUI toolkit. Idle memory use is a few megabytes.
 > (Anthropic's AI coding agent).
 
 Used to be called iTunes-RPC and only worked with iTunes on Windows.
-Renamed and rewritten to match what it actually does now. The old project's
+Renamed and rewritten to match what it does now. The old project's
 history, including its own `CHANGELOG.md` and `KNOWN_ISSUES.md`, is kept at
 the archived [hvtim/iTunes-RPC](https://github.com/hvtim/iTunes-RPC) repo.
 
 **v0.1.0, not production-stable.** Check [KNOWN_ISSUES.md](KNOWN_ISSUES.md)
-for what's actually verified on each platform before relying on this.
+for what's verified on each platform before relying on this.
 
 ## Install
 
@@ -71,8 +71,8 @@ featherrpc-cli autostart on
 featherrpc-cli daemon stop
 ```
 
-Run `featherrpc-cli` with no arguments for the full command list. Linux/
-macOS CLI parity is in progress (see open branches).
+Run `featherrpc-cli` with no arguments for the full command list. Linux and
+macOS ship the same `featherrpc-cli` tool.
 
 ## Build from source
 
@@ -85,8 +85,7 @@ cmake --build build --config Release
 ```
 
 Windows also cross-compiles for ARM64 with `-A ARM64` (a v143 ARM64 build
-tools component is required); this has never been run on real ARM64
-hardware.
+tools component is required); this has never been run on ARM64 hardware.
 
 macOS: `cmake -B build -G Xcode && cmake --build build --config Release`
 produces a `FeatherRPC.app` bundle. Requires Xcode command line tools. This
@@ -114,7 +113,7 @@ Full detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Headlines:
   to a static logo.
 - macOS is code-complete but has never been built or run - no Mac hardware
   was available during development.
-- Linux tray rendering has never been visually confirmed on a real desktop.
-- No real Windows *service* here - Session 0 isolation blocks access to the
+- Linux tray rendering has never been visually confirmed outside WSL.
+- No Windows *service* here - Session 0 isolation blocks access to the
   interactive user's iTunes/SMTC session. Headless mode is a login-launched
   process, not `sc.exe`.
