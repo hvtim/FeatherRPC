@@ -71,8 +71,9 @@ featherrpc-cli autostart on
 featherrpc-cli daemon stop
 ```
 
-Run `featherrpc-cli` with no arguments for the full command list. macOS
-ships the same `featherrpc-cli` tool.
+Run `featherrpc-cli` with no arguments for the full command list, or see
+[docs/CLI.md](docs/CLI.md) for details on every command. macOS ships the
+same `featherrpc-cli` tool.
 
 ## CLI control (Linux)
 
@@ -90,7 +91,8 @@ featherrpc autostart on
 featherrpc daemon stop
 ```
 
-Run `featherrpc` with no arguments for the full command list. `autostart`
+Run `featherrpc` with no arguments for the full command list, or see
+[docs/CLI.md](docs/CLI.md) for details on every command. `autostart`
 manages the `featherrpc.service` systemd **user** unit for headless mode -
 use `systemctl --user ...` against it, never `sudo systemctl ...` (there is
 no system-wide unit by this name). The default tray-mode autostart (XDG
