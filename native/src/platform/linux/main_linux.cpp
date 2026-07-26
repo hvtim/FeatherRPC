@@ -3,11 +3,14 @@
 #include "core/Log.h"
 #include "core/PresenceEngine.h"
 
+#include "cli/StatusFile.h"
+
 #include "platform/linux/AppIndicatorTray.h"
 #include "platform/linux/CurlAlbumArtLookup.h"
 #include "platform/linux/DesktopAutoLaunch.h"
 #include "platform/linux/MprisMediaSource.h"
 #include "platform/linux/TextPrompt.h"
+#include "platform/posix/DaemonSignal.h"
 #include "platform/posix/UnixSocketIpcTransport.h"
 
 #include <curl/curl.h>
@@ -29,9 +32,18 @@ std::unique_ptr<core::MediaSource> MakeMediaSource(const std::string& id) {
     return std::make_unique<platform_linux::MprisMediaSource>(id);
 }
 
+bool HasNoTrayFlag(int argc, char** argv) {
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--no-tray") {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     // libcurl's global init is not thread-safe and must run before any
     // other thread (including PresenceEngine's worker) touches curl.
     curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -42,22 +54,15 @@ int main() {
     core::AppConfig config = core::LoadConfig(core::GetConfigFilePath());
     std::string currentMediaSourceId = config.mediaSource;
 
-    platform_linux::DesktopAutoLaunch autoLaunch;
-
     core::PresenceEngine engine(
         config,
         MakeMediaSource(currentMediaSourceId),
         std::make_unique<platform_linux::CurlAlbumArtLookup>(),
         [] { return std::make_unique<platform_posix::UnixSocketIpcTransport>(); });
 
-    nativeui::AppIndicatorTray tray;
-    if (!tray.Create("featherrpc")) {
-        core::Log::Write("[error] Failed to create the tray icon.");
-        return 1;
-    }
-    tray.SetInitialState(config, autoLaunch.IsEnabled());
-
-    tray.OnConfigChanged = [&](const core::AppConfig& newConfig) {
+    // Shared by both the tray's OnConfigChanged and the headless reload
+    // loop below - identical either way.
+    auto applyConfig = [&](const core::AppConfig& newConfig) {
         core::SaveConfig(newConfig, core::GetConfigFilePath());
 
         std::unique_ptr<core::MediaSource> newMediaSource;
@@ -67,6 +72,48 @@ int main() {
         }
 
         engine.UpdateConfig(newConfig, std::move(newMediaSource));
+    };
+
+    if (HasNoTrayFlag(argc, argv)) {
+        // No GLib main loop/tray in this mode - platform_posix's sigwait
+        // loop is the entire event loop, replacing AppIndicator's timer-
+        // based menu refresh the same way the Windows daemon path
+        // replaces the tray's message pump.
+        platform_posix::DaemonBlockSignalsAndWritePidFile();
+        engine.OnStatusChanged = [&] { cli::WriteStatusFile(engine.Status()); };
+        engine.Start();
+        core::Log::Write("Running headless (--no-tray).");
+
+        for (;;) {
+            if (platform_posix::DaemonWaitForSignal() == platform_posix::DaemonSignalKind::Quit) {
+                break;
+            }
+            applyConfig(core::LoadConfig(core::GetConfigFilePath()));
+            core::Log::Write("Reloaded config.");
+        }
+
+        engine.Stop();
+        platform_posix::DaemonRemovePidFile();
+        core::Log::Write("Exiting.");
+        curl_global_cleanup();
+        return 0;
+    }
+
+    platform_linux::DesktopAutoLaunch autoLaunch;
+
+    nativeui::AppIndicatorTray tray;
+    if (!tray.Create("featherrpc")) {
+        core::Log::Write("[error] Failed to create the tray icon.");
+        return 1;
+    }
+    tray.SetInitialState(config, autoLaunch.IsEnabled());
+
+    tray.OnConfigChanged = [&](const core::AppConfig& newConfig) {
+        if (newConfig.trayEnabled != config.trayEnabled) {
+            core::Log::Write("Tray icon preference changed - takes effect next launch.");
+        }
+        config = newConfig;
+        applyConfig(newConfig);
     };
 
     tray.OnStartAtLoginChanged = [&](bool enabled) { autoLaunch.SetEnabled(enabled); };
