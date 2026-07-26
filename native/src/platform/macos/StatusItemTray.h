@@ -41,6 +41,7 @@ public:
     std::function<void(bool)> OnStartAtLoginChanged;
     std::function<void(std::string&)> OnEditApplicationId;
     std::function<void(std::string&)> OnEditCustomArtUrl;
+    std::function<void(std::string&)> OnEditFallbackImageKey;
 
     // Invoked by the Objective-C target/action glue in StatusItemTray.mm
     // when a menu item fires - not meant to be called from main.mm.

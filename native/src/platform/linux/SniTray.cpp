@@ -393,6 +393,19 @@ void SniTray::HandleCommand(int itemId) {
         return;
     }
 
+    if (name == "set-fallback-key") {
+        std::string value = config_.largeImageKey;
+        std::string original = value;
+        if (OnEditFallbackImageKey) {
+            OnEditFallbackImageKey(value);
+        }
+        if (value != original) {
+            config_.largeImageKey = value;
+            NotifyConfigChanged();
+        }
+        return;
+    }
+
     if (name == "media-source") {
         config_.mediaSource = node->stringValue;
         NotifyConfigChanged();
@@ -508,7 +521,11 @@ void SniTray::RebuildMenuTree() {
     };
     addArtItem("Automatic (look up cover art)", "Auto");
     addArtItem("Custom image URL...", "Custom");
-    addArtItem("Static logo only", "Off");
+    addArtItem("Fallback image only", "Off");
+
+    MenuNode& setFallbackKeyItem = addChild(artMenu);
+    setFallbackKeyItem.label = "Set Fallback Image Key...";
+    setFallbackKeyItem.command = "set-fallback-key";
 
     MenuNode& pollMenu = addChild(rootMenu_);
     pollMenu.label = "Poll Interval";

@@ -74,6 +74,7 @@ public:
     std::function<void(bool)> OnStartAtLoginChanged;
     std::function<void(std::string&)> OnEditApplicationId;
     std::function<void(std::string&)> OnEditCustomArtUrl;
+    std::function<void(std::string&)> OnEditFallbackImageKey;
     std::function<std::vector<core::MediaSourceInfo>()> OnRefreshMediaSources;
 
     // Invoked on the main thread (via g_unix_signal_add, from inside

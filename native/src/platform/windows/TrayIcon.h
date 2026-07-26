@@ -59,6 +59,7 @@ public:
     // value in place; leaves it unchanged if the user cancels.
     std::function<void(std::wstring&)> OnEditApplicationId;
     std::function<void(std::wstring&)> OnEditCustomArtUrl;
+    std::function<void(std::wstring&)> OnEditFallbackImageKey;
 
     // Called synchronously right before the context menu is shown, to
     // refresh the Media Source submenu against currently-active SMTC
