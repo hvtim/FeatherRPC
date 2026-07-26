@@ -15,15 +15,21 @@
 
 namespace {
 
-// The CLI tool is installed next to the main app binary - resolves
-// FeatherRPC relative to featherrpc's own directory rather than assuming a
-// fixed install path.
+// Matches installer/linux/install.sh's DATA_HOME/INSTALL_DIR exactly - the
+// one place this needs updating if the install location ever changes.
+// The CLI tool is deliberately installed elsewhere (~/.local/bin, so it's
+// on $PATH - see install.sh), so unlike macOS/Windows there's no way to
+// find FeatherRPC relative to this binary's own location.
 std::filesystem::path AppExePath() {
-    char buf[4096] = {};
-    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    std::filesystem::path self = len > 0 ? std::filesystem::path(std::string(buf, static_cast<size_t>(len)))
-                                          : std::filesystem::path();
-    return self.parent_path() / "FeatherRPC";
+    const char* dataHome = std::getenv("XDG_DATA_HOME");
+    std::filesystem::path base;
+    if (dataHome && *dataHome) {
+        base = dataHome;
+    } else {
+        const char* home = std::getenv("HOME");
+        base = std::filesystem::path(home ? home : "") / ".local/share";
+    }
+    return base / "FeatherRPC" / "FeatherRPC";
 }
 
 bool SpawnDaemon() {

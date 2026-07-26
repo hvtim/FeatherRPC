@@ -72,6 +72,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     core::Log::Init(core::GetLogFilePath());
     core::Log::Write("FeatherRPC starting...");
 
+    // First thing, before touching config/engine/tray - refuses to start
+    // a second instance (tray or headless) alongside one that's already
+    // running, no matter what launched it (the Startup shortcut, a manual
+    // second run, or `featherrpc-cli daemon start`).
+    auto singleInstanceLock = platform_windows::SingleInstanceLock::TryAcquire();
+    if (!singleInstanceLock.Acquired()) {
+        core::Log::Write("[error] FeatherRPC is already running - exiting.");
+        return 1;
+    }
+
     core::AppConfig config = core::LoadConfig(core::GetConfigFilePath());
     std::string currentMediaSourceId = config.mediaSource;
 
@@ -144,6 +154,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
 
     tray.OnEditCustomArtUrl = [&](std::wstring& value) {
         nativeui::PromptForText(tray.Hwnd(), L"FeatherRPC", L"Image URL (512x512 recommended):", value);
+    };
+
+    tray.OnEditFallbackImageKey = [&](std::wstring& value) {
+        nativeui::PromptForText(tray.Hwnd(), L"FeatherRPC", L"Fallback image asset key:", value);
     };
 
     tray.OnRefreshMediaSources = [] { return platform_windows::SmtcMediaSource::GetAvailableSources(); };

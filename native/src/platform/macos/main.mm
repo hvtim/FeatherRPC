@@ -29,6 +29,17 @@ int main(int argc, const char** argv) {
         core::Log::Init(core::GetLogFilePath());
         core::Log::Write("FeatherRPC starting...");
 
+        // First thing, before touching config/engine/tray - refuses to
+        // start a second instance (tray or headless) alongside one
+        // that's already running, no matter what launched it (a
+        // LaunchAgent, a manual second run, or `featherrpc-cli daemon
+        // start`).
+        auto singleInstanceLock = platform_posix::SingleInstanceLock::TryAcquire();
+        if (!singleInstanceLock.Acquired()) {
+            core::Log::Write("[error] FeatherRPC is already running - exiting.");
+            return 1;
+        }
+
         core::AppConfig config = core::LoadConfig(core::GetConfigFilePath());
 
         platform_macos::LaunchAgentAutoLaunch autoLaunch;
@@ -104,6 +115,10 @@ int main(int argc, const char** argv) {
 
         tray.OnEditCustomArtUrl = [&](std::string& value) {
             nativeui::PromptForText("FeatherRPC", "Image URL (512x512 recommended):", value);
+        };
+
+        tray.OnEditFallbackImageKey = [&](std::string& value) {
+            nativeui::PromptForText("FeatherRPC", "Fallback image asset key:", value);
         };
 
         engine.OnStatusChanged = [&] {

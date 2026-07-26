@@ -40,7 +40,45 @@ enum class DaemonSignalKind { Reload, Quit };
 // headless, replacing the tray's UI message pump).
 DaemonSignalKind DaemonWaitForSignal();
 
-// Call once on clean shutdown (after handling a Quit signal).
+// Call once on clean shutdown (after handling a Quit signal). Only
+// removes the pidfile if it still holds this process's own pid - a second
+// instance that got as far as overwriting it with its own pid (see
+// SingleInstanceLock below for why that should no longer happen at all)
+// must not have its identity erased by the first instance's shutdown.
 void DaemonRemovePidFile();
+
+// Guards against two FeatherRPC processes running at once - tray+tray,
+// headless+headless, or tray+headless in any combination - regardless of
+// what launched the second one (a manual run, systemd/LaunchAgent
+// autostart, or `featherrpc daemon start`). Deliberately a separate lock
+// file from the pidfile above rather than reusing it: this lock only ever
+// answers "is another instance already alive", it never feeds
+// RequestReload()/RequestQuit(), so acquiring it in tray mode can't cause
+// a CLI command to send a real SIGHUP/SIGTERM into a tray process that
+// isn't set up to handle it as anything other than "terminate" (true
+// today on macOS; SniTray.cpp handles it properly on Linux, see
+// g_unix_signal_add there, but this lock doesn't depend on that).
+//
+// Call TryAcquire() once, first thing in main(), before doing anything
+// else - keep the returned object alive for the process's entire
+// lifetime. The OS releases the underlying flock() automatically on exit
+// or crash, so a killed process can never wedge a future launch.
+class SingleInstanceLock {
+public:
+    static SingleInstanceLock TryAcquire();
+
+    SingleInstanceLock(SingleInstanceLock&&) noexcept;
+    SingleInstanceLock& operator=(SingleInstanceLock&&) noexcept;
+    ~SingleInstanceLock();
+
+    SingleInstanceLock(const SingleInstanceLock&) = delete;
+    SingleInstanceLock& operator=(const SingleInstanceLock&) = delete;
+
+    bool Acquired() const { return fd_ >= 0; }
+
+private:
+    explicit SingleInstanceLock(int fd) : fd_(fd) {}
+    int fd_ = -1;
+};
 
 } // namespace platform_posix

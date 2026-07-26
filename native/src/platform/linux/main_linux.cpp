@@ -51,6 +51,21 @@ int main(int argc, char** argv) {
     core::Log::Init(core::GetLogFilePath());
     core::Log::Write("FeatherRPC starting...");
 
+    // First thing, before touching config/engine/tray - refuses to start
+    // a second instance (tray or headless) alongside one that's already
+    // running, no matter what launched it (systemd, autostart, a manual
+    // second run, or `featherrpc daemon start`).
+    auto singleInstanceLock = platform_posix::SingleInstanceLock::TryAcquire();
+    if (!singleInstanceLock.Acquired()) {
+        core::Log::Write("[error] FeatherRPC is already running - exiting.");
+        // 75 (not 1) so featherrpc.service's RestartPreventExitStatus=75
+        // can tell this intentional, expected refusal apart from an actual
+        // crash - otherwise systemd's Restart=on-failure would spin up
+        // restart attempts in a tight loop for as long as another
+        // instance keeps holding the lock.
+        return 75;
+    }
+
     core::AppConfig config = core::LoadConfig(core::GetConfigFilePath());
     std::string currentMediaSourceId = config.mediaSource;
 
@@ -153,6 +168,10 @@ int main(int argc, char** argv) {
 
     tray.OnEditCustomArtUrl = [&](std::string& value) {
         platform_linux::PromptForText("FeatherRPC", "Image URL (512x512 recommended):", value);
+    };
+
+    tray.OnEditFallbackImageKey = [&](std::string& value) {
+        platform_linux::PromptForText("FeatherRPC", "Fallback image asset key:", value);
     };
 
     tray.OnRefreshMediaSources = [] { return platform_linux::MprisMediaSource::GetAvailableSources(); };

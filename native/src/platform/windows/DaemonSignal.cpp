@@ -5,6 +5,7 @@ namespace platform_windows {
 namespace {
 constexpr wchar_t kReloadEventName[] = L"Local\\FeatherRPC-Daemon-Reload";
 constexpr wchar_t kQuitEventName[] = L"Local\\FeatherRPC-Daemon-Quit";
+constexpr wchar_t kSingleInstanceMutexName[] = L"Local\\FeatherRPC-SingleInstance";
 } // namespace
 
 bool WindowsDaemonSignal::IsRunning() const {
@@ -57,6 +58,44 @@ DaemonSignalKind DaemonWaiter::Wait() {
     HANDLE handles[2] = {_reloadEvent, _quitEvent};
     DWORD result = WaitForMultipleObjects(2, handles, FALSE, INFINITE);
     return (result == WAIT_OBJECT_0) ? DaemonSignalKind::Reload : DaemonSignalKind::Quit;
+}
+
+SingleInstanceLock SingleInstanceLock::TryAcquire() {
+    // bInitialOwner=TRUE: this call both creates (or opens) the mutex and
+    // takes ownership in one step. GetLastError() distinguishes "created
+    // fresh" from "already existed" - the latter means another instance
+    // is holding it right now.
+    HANDLE handle = CreateMutexW(nullptr, TRUE, kSingleInstanceMutexName);
+    if (!handle) {
+        return SingleInstanceLock(nullptr);
+    }
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        CloseHandle(handle);
+        return SingleInstanceLock(nullptr);
+    }
+    return SingleInstanceLock(handle);
+}
+
+SingleInstanceLock::SingleInstanceLock(SingleInstanceLock&& other) noexcept : handle_(other.handle_) {
+    other.handle_ = nullptr;
+}
+
+SingleInstanceLock& SingleInstanceLock::operator=(SingleInstanceLock&& other) noexcept {
+    if (this != &other) {
+        if (handle_) {
+            CloseHandle(handle_);
+        }
+        handle_ = other.handle_;
+        other.handle_ = nullptr;
+    }
+    return *this;
+}
+
+SingleInstanceLock::~SingleInstanceLock() {
+    if (handle_) {
+        ReleaseMutex(handle_);
+        CloseHandle(handle_);
+    }
 }
 
 } // namespace platform_windows
