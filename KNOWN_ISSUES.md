@@ -16,7 +16,15 @@ technical debt - none of it is glossed over.
   never been checked against a real `sdef`/`sdp` scripting dictionary
   dump - property names/codes could be wrong. The tray (`NSStatusItem`/
   `NSMenu`), the `NSAlert` text prompt, and the LaunchAgent plist have never
-  been run once. Treat all of it as "believed correct," not "verified."
+  been run once. `installer/macos/build-dmg.sh` (the `.dmg` packaging
+  script) is the same story - written against documented `hdiutil`/
+  `osascript` behavior, never run. Treat all of it as "believed correct,"
+  not "verified."
+- **No app icon anywhere in the repo.** `assets/icon.png` (512x512) exists,
+  but nobody has run `iconutil` to build an `.iconset`/`.icns` from it, and
+  `native/src/platform/macos/Info.plist.in` has no `CFBundleIconFile` key.
+  The shipped `.app` shows the generic macOS document icon - in Finder, the
+  Dock, and the `.dmg` window itself - until this is done on real hardware.
 - **Linux tray rendering has never been seen.** Compile and run verification
   happened via WSL (no display server at all), so while the app starts
   clean, writes logs correctly, and the graceful-degradation path is
@@ -71,7 +79,13 @@ technical debt - none of it is glossed over.
 - **No code signing on any platform.** Binaries and installers are
   unsigned. The old C# README documented SHA256 verification of release
   downloads as a low-cost mitigation for this - worth carrying forward as a
-  practice, not just a historical note.
+  practice, not just a historical note. On macOS specifically, this hits
+  the `.dmg` path harder than `install.sh`: a `.dmg` downloaded from a
+  browser carries a quarantine flag, so Gatekeeper blocks first launch with
+  "cannot be opened because the developer cannot be verified" until the
+  user right-clicks > Open (or clears the flag manually). Fixing this for
+  real needs an Apple Developer account for signing and notarization -
+  neither exists for this project.
 
 ### Flagged-but-unresolved risk (low confidence either way, never tested)
 
