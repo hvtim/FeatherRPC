@@ -1,19 +1,19 @@
 # Known Issues, Quirks, and Technical Debt
 
-A meticulous record of this project's actual state as of the last commit
-under the iTunes-RPC name, before rebranding to FeatherRPC. Preserved so
-nothing learned during development gets silently lost in the rename. Items
-here are a mix of open limitations, fixed-but-noteworthy bugs, and honest
-technical debt - none of it is glossed over.
+A record of this project's state as of the last commit under the
+iTunes-RPC name, before rebranding to FeatherRPC. Preserved so nothing
+learned during development gets silently lost in the rename. Items here
+are a mix of open limitations, fixed-but-noteworthy bugs, and technical
+debt - none of it is glossed over.
 
 ## Open, unresolved as of this writing
 
-### Verification gaps (not bugs - things that were never actually checked)
+### Verification gaps (not bugs - things that were never checked)
 
 - **macOS is entirely unverified.** No Mac hardware existed anywhere in the
   development environment at any point. The Scripting Bridge glue in
   `MusicApplication.h` was hand-declared against documented APIs and has
-  never been checked against a real `sdef`/`sdp` scripting dictionary
+  never been checked against Apple's own `sdef`/`sdp` scripting dictionary
   dump - property names/codes could be wrong. The tray (`NSStatusItem`/
   `NSMenu`), the `NSAlert` text prompt, and the LaunchAgent plist have never
   been run once. `installer/macos/build-dmg.sh` (the `.dmg` packaging
@@ -24,21 +24,20 @@ technical debt - none of it is glossed over.
   but nobody has run `iconutil` to build an `.iconset`/`.icns` from it, and
   `native/src/platform/macos/Info.plist.in` has no `CFBundleIconFile` key.
   The shipped `.app` shows the generic macOS document icon - in Finder, the
-  Dock, and the `.dmg` window itself - until this is done on real hardware.
+  Dock, and the `.dmg` window itself - until this is done on Mac hardware.
 - **Linux tray rendering has never been seen.** Compile and run verification
   happened via WSL (no display server at all), so while the app starts
   clean, writes logs correctly, and the graceful-degradation path is
-  confirmed working (see below), nobody has actually looked at the tray icon
-  render on a real desktop. The plan's 3-configuration test matrix (KDE
-  Plasma 6/Wayland, vanilla GNOME/Wayland with no extension, GNOME with the
-  AppIndicator extension) has not been walked.
-- **Windows ARM64 has never run on real ARM64 hardware.** It cross-compiles
+  confirmed working (see below), nobody has looked at the tray icon render
+  outside WSL. The plan's 3-configuration test matrix (KDE Plasma 6/Wayland,
+  vanilla GNOME/Wayland with no extension, GNOME with the AppIndicator
+  extension) has not been walked.
+- **Windows ARM64 has never run on ARM64 hardware.** It cross-compiles
   cleanly and the resulting binary's PE header machine type is confirmed
-  `IMAGE_FILE_MACHINE_ARM64` (0xAA64) - genuinely ARM64, not mislabeled - but
-  COM/iTunes automation and C++/WinRT SMTC access have never actually been
-  exercised on an ARM64 device.
+  `IMAGE_FILE_MACHINE_ARM64` (0xAA64), but COM/iTunes automation and
+  C++/WinRT SMTC access have never been exercised on an ARM64 device.
 
-### Real, deliberate scope limits (not bugs)
+### Deliberate scope limits (not bugs)
 
 - **Spotify is excluded on every platform, on purpose.** It has its own
   native Discord Rich Presence integration; this app would just be a
@@ -49,8 +48,8 @@ technical debt - none of it is glossed over.
   macOS 15.4, breaking most existing workarounds. Reading other apps on Mac
   is a separately-scoped, clearly-risk-labeled feature to revisit later, not
   a gap in this implementation.
-- **Windows has no genuine background service, and never will.** A real
-  Windows Service (SCM-managed, Session 0) cannot `CoCreateInstance` into
+- **Windows has no background service, and never will.** A Windows Service
+  (SCM-managed, Session 0) cannot `CoCreateInstance` into
   the interactive user's `iTunes.exe` COM server or see that user's
   `GlobalSystemMediaTransportControlsSessionManager` SMTC sessions - both are
   inherently tied to the interactive desktop session, by Windows design
@@ -83,23 +82,23 @@ technical debt - none of it is glossed over.
   the `.dmg` path harder than `install.sh`: a `.dmg` downloaded from a
   browser carries a quarantine flag, so Gatekeeper blocks first launch with
   "cannot be opened because the developer cannot be verified" until the
-  user right-clicks > Open (or clears the flag manually). Fixing this for
-  real needs an Apple Developer account for signing and notarization -
-  neither exists for this project.
+  user right-clicks > Open (or clears the flag manually). Fixing this needs
+  an Apple Developer account for signing and notarization - neither exists
+  for this project.
 
 ### Flagged-but-unresolved risk (low confidence either way, never tested)
 
 - **Linux**: the tray menu rebuilds on every "show" event, sourced from
   live-refreshed MPRIS enumeration. A parallel effort flagged a theoretical
   risk that a rebuild landing while the menu is actively open could cause a
-  visible flicker - never actually observed, since nobody's watched it
-  render on a real desktop.
+  visible flicker - never observed, since nobody's watched it render
+  outside WSL.
 - **macOS**: `StatusItemTray`'s `dispatch_async`-based status-update
   callback could in theory fire after the tray object is destroyed during
   shutdown, a use-after-free. Low risk, flagged, not fixed - moot until this
   code runs anywhere for the first time.
 
-## Fixed, but worth knowing about (real bugs hit during development)
+## Fixed, but worth knowing about (bugs hit during development)
 
 - **iTunes' "scripting interface in use" quit warning.** Caused by holding a
   persistent COM connection to iTunes. Fixed (commit `1d892d8`, briefly
@@ -108,7 +107,7 @@ technical debt - none of it is glossed over.
   incidental - the native C++ rewrite preserves this exact pattern
   deliberately; "optimizing" it into a persistent connection would
   reintroduce the warning.
-- **Client ID masking: genuine back-and-forth, not a clean decision.** The
+- **Client ID masking: back-and-forth, not a clean decision.** The
   Application ID field was originally masked like a password. A later pass
   added a clarifying tooltip instead of removing the masking (commit
   `d8ac85a`) - then that whole commit was reverted with no recorded reason
@@ -120,9 +119,9 @@ technical debt - none of it is glossed over.
   honestly rather than pretending it was a straight line.
 - **Unbounded IPC frame allocation.** `DiscordIpcClient.ReadFrame` originally
   trusted a 4-byte length prefix from the named pipe with no upper bound
-  before allocating. Named pipes aren't authenticated to "the real Discord,"
-  so a malicious local process squatting on `discord-ipc-N` could trigger a
-  large allocation. Fixed with a 1MB cap in the C# version (`d8ac85a`), that
+  before allocating. Named pipes aren't authenticated, so a malicious local
+  process squatting on `discord-ipc-N` could trigger a large allocation.
+  Fixed with a 1MB cap in the C# version (`d8ac85a`), that
   fix was reverted for unclear/undocumented reasons (`37a6a5a`) - but the
   native rewrite's plan explicitly re-mandated this exact safeguard
   ("preserving the existing 1MB bounds check... do not drop this safeguard
@@ -132,7 +131,7 @@ technical debt - none of it is glossed over.
 - **Album art disappearing intermittently (C#, `#1`).** Root cause:
   `SetActivity`/`ClearActivity` marked an update as "sent" even when the
   underlying pipe write failed, deferring the next retry a full 60s instead
-  of the next 2s poll. Fixed in `73f1457` by actually propagating write
+  of the next 2s poll. Fixed in `73f1457` by propagating write
   success/failure.
 - **STA threading crash on paste.** Pasting into the Application ID field
   threw because `Main` wasn't `[STAThread]` (clipboard/OLE calls require
@@ -156,14 +155,14 @@ technical debt - none of it is glossed over.
   hardcoded one-time cleanup list in the installer.
 - **Linux: wrong AppIndicator library variant.** Initially linked
   `ayatana-appindicator3-0.1` (the older, GTK3-based library), which caused
-  a `Gtk-CRITICAL` assertion failure when actually run under emulation.
-  Root-caused, not patched around: switched to the real
-  `libayatana-appindicator-glib` API (exports menus/actions over D-Bus via
-  `org.gtk.Menus`/`org.gtk.Actions`, zero GTK dependency at all - confirmed
-  via `ldd`, no `libgtk`/`libgdk`/`libpango`/`libcairo` in the process).
-  Fedora doesn't package this variant, so it had to be built from source for
-  both x86_64 and the aarch64 cross-target - a real packaging wrinkle other
-  distros may or may not share.
+  a `Gtk-CRITICAL` assertion failure when run under emulation. Root-caused,
+  not patched around: switched to the `libayatana-appindicator-glib` API
+  (exports menus/actions over D-Bus via `org.gtk.Menus`/`org.gtk.Actions`,
+  zero GTK dependency at all - confirmed via `ldd`, no
+  `libgtk`/`libgdk`/`libpango`/`libcairo` in the process). Fedora doesn't
+  package this variant, so it had to be built from source for both x86_64
+  and the aarch64 cross-target - a packaging wrinkle other distros may or
+  may not share.
 - **Linux: log directory never created on first run.** Only appeared to
   work on Windows because a prior install had already created
   `%LOCALAPPDATA%\iTunes-RPC`. Fixed in `core/Log.cpp` with an explicit
@@ -175,14 +174,14 @@ technical debt - none of it is glossed over.
   planned `itunesrpc.exe` CLI tool would resolve to the *same file* on
   Windows' case-insensitive-by-default filesystem - the CLI build silently
   overwrote the main app binary the first time both targets built into the
-  same output directory. Fixed by giving the CLI tool a genuinely distinct
-  name (`itunesrpc-cli.exe`), not just different casing. Worth remembering
-  for any future Windows binary naming decisions.
+  same output directory. Fixed by giving the CLI tool a distinct name
+  (`itunesrpc-cli.exe`), not just different casing. Worth remembering for
+  any future Windows binary naming decisions.
 - **`AutoLaunch` target-path collision (caught before shipping).**
   `ShellLinkAutoLaunch`/`LaunchAgentAutoLaunch` both hardcoded "target = the
   calling process's own executable." Harmless for the tray app calling it
   about itself, but would have silently registered autostart for the
-  short-lived CLI tool instead of the real app the moment the CLI tool
+  short-lived CLI tool instead of the app the moment the CLI tool
   called `autostart on`. Fixed by parameterizing the target path (default
   empty = self, preserving existing call sites) before the CLI tool ever
   shipped.
@@ -212,9 +211,9 @@ technical debt - none of it is glossed over.
 - **Dark-mode edit-control focus underline.** A Windows 11 search-box-style
   blue underline on the Application ID edit control was initially "fixed" by
   switching its theme so it only showed in dark mode. Reverted after
-  noticing light mode showed the same underline and it wasn't actually a
-  problem - restored consistency across both modes instead of removing a
-  cosmetic detail nobody minded.
+  noticing light mode showed the same underline and it wasn't a problem -
+  restored consistency across both modes instead of removing a cosmetic
+  detail nobody minded.
 
 ## Process notes
 
@@ -223,7 +222,7 @@ technical debt - none of it is glossed over.
   11 are entirely inside the vendored `native/third_party/nlohmann/json.hpp`
   (not our code, addressed by excluding `third_party/` from the scan path
   rather than editing a vendored dependency) and the rest are false
-  positives specific to this codebase's actual usage (single-threaded
+  positives specific to this codebase's usage (single-threaded
   startup `getenv()` calls, an already-bounds-checked `memcpy`, `strlen` on
   a string literal, `localtime_s`/`localtime_r` substring-matched as
   "localtime", and Apple's literal plist DOCTYPE URL flagged as
