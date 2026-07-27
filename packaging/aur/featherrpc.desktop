@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=FeatherRPC
+Comment=Now-playing sync for Discord Rich Presence
+Exec=FeatherRPC
+Icon=featherrpc
+Categories=Utility;
