@@ -916,14 +916,62 @@ void SniTray::HandleMenuMethodCall(
         // menu, replacing AppIndicatorTray's old 10-second polling timer
         // (which existed only because GMenuModel-exported menus have no
         // such signal) with an actually-just-in-time refresh.
-        RefreshMediaSourcesAndRebuild();
-        g_dbus_method_invocation_return_value(invocation, g_variant_new("(b)", TRUE));
+        //
+        // The host calls this for EVERY item about to be shown, including
+        // the root and every submenu, not just Media Source - refreshing
+        // unconditionally meant hovering over "Album Art" or "Poll
+        // Interval" also did a synchronous MPRIS D-Bus round-trip first,
+        // adding latency to every submenu open for no reason. GNOME's own
+        // AppIndicator extension is documented as sensitive to exactly
+        // this kind of added delay during menu construction (Tailscale's
+        // systray hit the same class of bug on GNOME, see their #14477).
+        //
+        // Only refresh on the root (id 0) opening, not again when Media
+        // Source's own submenu opens moments later - the root's refresh is
+        // already fresh enough by then (the root has to open first, before
+        // any submenu can be hovered at all), and doing a second
+        // synchronous MPRIS round-trip specifically on Media Source's own
+        // AboutToShow was still enough added latency to reproduce the same
+        // flicker-then-collapse this whole rework is fixing, confirmed live
+        // (Album Art/Poll Interval opened fine once THEY stopped doing any
+        // work here; Media Source still glitched until this refresh moved
+        // to only happen on root-open).
+        //
+        // needUpdate (the bool returned here) should reflect whether
+        // anything actually changed, not be a hardcoded TRUE - a host
+        // that's told "needs update" on every single hover re-fetches
+        // GetLayout and rebuilds its own widget tree every time, which is
+        // exactly what was interacting badly with this extension's
+        // submenu-open animation (confirmed against a report of the same
+        // extension/bug: https://github.com/ubuntu/gnome-shell-extension-appindicator/issues/93 -
+        // "AboutToShow function should return false" unless something
+        // genuinely changed).
+        gint32 id = 0;
+        g_variant_get(parameters, "(i)", &id);
+        bool refreshed = false;
+        if (id == 0) {
+            RefreshMediaSourcesAndRebuild();
+            refreshed = true;
+        }
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(b)", refreshed));
         return;
     }
 
     if (methodName == "AboutToShowGroup") {
-        RefreshMediaSourcesAndRebuild();
         GVariant* idsV = g_variant_get_child_value(parameters, 0);
+        GVariantIter idsIter;
+        g_variant_iter_init(&idsIter, idsV);
+        gint32 groupId = 0;
+        bool needsRefresh = false;
+        while (g_variant_iter_next(&idsIter, "i", &groupId)) {
+            if (groupId == 0) {
+                needsRefresh = true;
+                break;
+            }
+        }
+        if (needsRefresh) {
+            RefreshMediaSourcesAndRebuild();
+        }
         GVariantBuilder errBuilder;
         g_variant_builder_init(&errBuilder, G_VARIANT_TYPE("ai"));
         g_dbus_method_invocation_return_value(
