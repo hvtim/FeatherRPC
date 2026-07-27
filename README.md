@@ -3,9 +3,14 @@
 # FeatherRPC
 
 Syncs whatever's currently playing to Discord as a Rich Presence status.
-iTunes, VLC, browsers, or anything else that reports now-playing info to
-Windows; any MPRIS player on Linux; Music.app on macOS. Native C++, no
-runtime, no bundled GUI toolkit. Idle memory use is a few megabytes.
+
+- Windows: iTunes, VLC, browsers, or anything else that reports
+  now-playing info to the system.
+- Linux: any MPRIS-compliant player.
+- macOS: Music.app.
+
+Native C++, no runtime, no bundled GUI toolkit. Idle memory use is a few
+megabytes.
 
 > Built with the help of [Claude Code](https://claude.com/claude-code)
 > (Anthropic's AI coding agent).
@@ -49,13 +54,12 @@ Right-click the tray icon:
 - Broadcast on/off
 - Show track number on/off
 - Album art: automatic lookup, a custom image URL, or a static fallback
-  image - and which asset to use for that fallback (see
+  image, and which asset to use for the fallback (see
   [docs/AlbumArt.md](docs/AlbumArt.md))
 - Poll interval
 - Start at login
-- Show tray icon (Windows; toggling this off takes effect on the next
-  launch, not live - a running process can't remove its own tray icon
-  mid-session)
+- Show tray icon (takes effect on the next launch, not live - a running
+  process can't remove its own tray icon mid-session)
 
 Every change applies immediately to the running instance except the tray
 toggle itself.
@@ -125,10 +129,10 @@ path is untested - open an issue if you hit build errors.
   Scripting Bridge for Music.app on macOS).
 - Sends the track to Discord as a "Listening to" Rich Presence activity with
   a live progress bar.
-- Looks up cover art via Apple's iTunes Search API (album, then track),
-  regardless of platform or media source. See
-  [docs/AlbumArt.md](docs/AlbumArt.md) for how the fallback image works
-  when that lookup misses.
+- Looks up cover art automatically (Apple's iTunes Search API, then
+  MusicBrainz + Cover Art Archive), regardless of platform or media
+  source. See [docs/AlbumArt.md](docs/AlbumArt.md) for how the fallback
+  image works when both miss.
 - Spotify is excluded on every platform - it has its own Discord
   integration.
 
@@ -138,11 +142,14 @@ Full detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Headlines:
 
 - The "Listening to" wording isn't officially supported for third-party
   apps and could change in a future Discord update.
-- Album art requires a match on Apple's catalog; unmatched tracks fall back
-  to a static logo.
-- macOS is code-complete but has never been built or run - no Mac hardware
-  was available during development.
-- Linux tray rendering has never been visually confirmed outside WSL.
+- Album art falls back to a static image if no automatic match is found.
+  See [docs/AlbumArt.md](docs/AlbumArt.md).
+- macOS is code-complete but has never been built or run - no Mac
+  hardware was available during development.
+- Linux tray rendering is confirmed on KDE Plasma 6; other desktop
+  environments are untested.
+- Windows ARM64 compiles but has never run on real ARM64 hardware.
 - No Windows *service* here - Session 0 isolation blocks access to the
-  interactive user's iTunes/SMTC session. Headless mode is a login-launched
-  process, not `sc.exe`.
+  interactive user's iTunes/SMTC session. Headless mode is a
+  login-launched process, not `sc.exe`.
+- No code signing on any platform.
