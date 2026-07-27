@@ -1,15 +1,45 @@
 # Changelog
 
-Full history of this project under its original name and scope, **iTunes-RPC**
-(an iTunes-specific Discord Rich Presence tool for Windows). Preserved here
-before the project was rebranded to **FeatherRPC** to reflect its current
-scope: a lightweight, native, cross-platform Rich Presence bridge for any
-media source, not just iTunes. See the FeatherRPC repository for
-development after this point.
+Full history of this project, including under its original name and scope,
+**iTunes-RPC** (an iTunes-specific Discord Rich Presence tool for Windows),
+before it was rebranded to **FeatherRPC**: a lightweight, native,
+cross-platform Rich Presence bridge for any media source, not just iTunes.
 
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
-Versions before this point were not strict SemVer - FeatherRPC adopts SemVer
-starting at 0.1.0.
+Versions before the rebrand were not strict SemVer - FeatherRPC adopts
+SemVer starting at 0.1.0.
+
+## [Unreleased]
+
+Linux tray rewritten to talk to `org.kde.StatusNotifierItem`/
+`com.canonical.dbusmenu` directly over D-Bus, dropping
+`libayatana-appindicator-glib` entirely (it wasn't reliably packaged -
+AUR-only on Arch, awkward on Fedora). Live-tested on both KDE Plasma 6 and
+GNOME Shell (with the AppIndicator extension).
+
+- Cross-platform single-instance guard - previously nothing stopped two
+  instances (tray+tray, headless+headless, or tray+headless) from running
+  at once on any platform.
+- Album art gets a second automatic lookup source, MusicBrainz + Cover Art
+  Archive, tried when iTunes finds nothing. The fallback image asset key
+  is now configurable from the tray menu, not just the CLI; its default
+  name changed from `logo` to `fallback`.
+- Linux CLI renamed `featherrpc-cli` -> `featherrpc` (Linux only - Windows/
+  macOS keep the `-cli` suffix due to a filesystem case-collision issue).
+- Linux distribution groundwork: AUR `PKGBUILD`, Fedora COPR `.spec`, and
+  an AppImage build script - none published yet, see
+  [packaging/README.md](packaging/README.md).
+- Documentation restructured into `docs/` (`CLI.md`, `AlbumArt.md`,
+  `Building.md`, `KnownIssues.md`) with an index, instead of everything
+  living in the README or scattered at the repo root.
+- Fixed: `daemon start`/`daemon restart` silently doing nothing under a
+  real Linux install (wrong install-path assumption), a systemd
+  restart-loop the single-instance guard's fix surfaced, `daemon start`
+  reporting false success on Windows/macOS, and two Linux tray bugs found
+  live on GNOME (submenus needing a click instead of opening on hover,
+  and the tray icon showing a generic placeholder under a bare AppImage
+  run). Full detail on all of these in
+  [docs/KnownIssues.md](docs/KnownIssues.md).
 
 ## [0.1.0] - rebrand to FeatherRPC
 
