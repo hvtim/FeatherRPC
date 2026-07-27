@@ -49,17 +49,25 @@ cp "$REPO_ROOT/installer/linux/app/icon.png" "$APPDIR/usr/share/icons/hicolor/25
 cp "$REPO_ROOT/packaging/aur/featherrpc.desktop" "$APPDIR/usr/share/applications/featherrpc.desktop"
 
 echo "Running linuxdeploy..."
+# Excluding every bundled library, not just the system-integration ones
+# (libudev/libsystemd/libselinux/libmount/libblkid) that seemed like the
+# obviously unsafe ones to bundle. Confirmed live: excluding only those
+# fixed libudev specifically, but the same dynamic-linker-init segfault
+# immediately reappeared in a different bundled library (libcbor, then
+# libcrypto after excluding a much longer list) - this build's system
+# libraries use RELR-packed relocations that don't survive being loaded
+# from a relocated AppImage path, and that's not specific to any one
+# library. Our actual runtime deps (glib2/dbus/curl) are near-universal
+# on desktop Linux already, so relying on the target system's own copies
+# for all of them isn't the portability loss it would have been with the
+# old GTK/appindicator dependency footprint. See docs/KnownIssues.md.
 VERSION="$VERSION" "$WORK_DIR/squashfs-root/AppRun" \
     --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/FeatherRPC" \
     --executable "$APPDIR/usr/bin/featherrpc" \
     --desktop-file "$APPDIR/usr/share/applications/featherrpc.desktop" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/256x256/apps/featherrpc.png" \
-    --exclude-library='libselinux*' \
-    --exclude-library='libmount*' \
-    --exclude-library='libblkid*' \
-    --exclude-library='libsystemd*' \
-    --exclude-library='libudev*' \
+    --exclude-library='*' \
     --output appimage
 
 mv "$WORK_DIR"/FeatherRPC-*.AppImage "$REPO_ROOT/"
