@@ -31,11 +31,18 @@ std::unique_ptr<core::MediaSource> MakeMediaSource(const std::string& id) {
     return std::make_unique<platform_windows::SmtcMediaSource>(id);
 }
 
-// Useful for live debugging while running from a terminal - Log::Write
-// also always writes to the log file, which is the only way to see
-// anything once the app is running windowless via autorun.
+// Useful for live debugging while running from an existing terminal.
+// AttachConsole(ATTACH_PARENT_PROCESS) only succeeds if the process
+// actually has a console-hosting parent (cmd.exe/PowerShell) - launching
+// via Explorer/Start Menu/Startup shortcut has no such parent, so this
+// is a no-op then, unlike AllocConsole() which would unconditionally pop
+// a console for every normal launch. Log::Write also always writes to
+// the log file, which is the only way to see anything once the app is
+// running windowless via autorun.
 void AttachDebugConsole() {
-    AllocConsole();
+    if (!AttachConsole(ATTACH_PARENT_PROCESS)) {
+        return;
+    }
     FILE* dummy = nullptr;
     freopen_s(&dummy, "CONOUT$", "w", stdout);
     freopen_s(&dummy, "CONOUT$", "w", stderr);
@@ -65,9 +72,7 @@ bool HasNoTrayFlag() {
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     bool noTray = HasNoTrayFlag();
-    if (!noTray) {
-        AttachDebugConsole();
-    }
+    AttachDebugConsole();
 
     core::Log::Init(core::GetLogFilePath());
     core::Log::Write("FeatherRPC starting...");
