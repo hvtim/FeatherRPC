@@ -27,12 +27,13 @@ installing, on any platform.
 
 ### Windows
 
-1. Download the Windows zip from the
-   [latest release](../../releases/latest) and extract it.
-2. Run `install.bat`. Right-click the tray icon afterward to enter the
-   Application ID.
+Download and run `FeatherRPC-Setup-x64.exe` (or `-arm64` on ARM64 Windows)
+from the [latest release](../../releases/latest). No admin rights needed -
+it installs to `%LOCALAPPDATA%\FeatherRPC`. Right-click the tray icon
+afterward to enter the Application ID.
 
-Installs to `%LOCALAPPDATA%\FeatherRPC`.
+Prefer no installer? Download the Windows zip instead, extract it, and run
+`install.bat`.
 
 ### Linux
 
