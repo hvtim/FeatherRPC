@@ -27,30 +27,48 @@ installing, on any platform.
 
 ### Windows
 
-Download and run `FeatherRPC-Setup-x64.exe` (or `-arm64` on ARM64 Windows)
-from the [latest release](../../releases/latest). No admin rights needed -
-it installs to `%LOCALAPPDATA%\FeatherRPC`. Right-click the tray icon
-afterward to enter the Application ID.
+#### Installer
 
-Prefer no installer? Download the Windows zip instead, extract it, and run
-`install.bat`.
+No admin rights needed. Download from the
+[latest release](../../releases/latest), then run:
+
+```
+FeatherRPC-Setup-x64.exe
+```
+
+(`-arm64` on ARM64 Windows). Installs to `%LOCALAPPDATA%\FeatherRPC`.
+
+#### Zip
+
+Download and extract the [Windows zip](../../releases/latest), then:
+
+```
+install.bat
+```
 
 ### Linux
 
-Two options:
+#### AppImage
 
-- **AppImage** - no install step, no dependencies beyond what most
-  desktops already have (`glib2`, `dbus`, `curl`).
-  1. Download `FeatherRPC-*.AppImage` from the
-     [latest release](../../releases/latest).
-  2. `chmod +x FeatherRPC-*.AppImage`
-  3. Run it: `./FeatherRPC-*.AppImage`.
-- **install.sh** - installs to `~/.local/share/FeatherRPC`, sets up
-  autostart, and puts the `featherrpc` CLI on `$PATH`.
-  1. Download the Linux zip from the
-     [latest release](../../releases/latest) and extract it.
-  2. `chmod +x install.sh uninstall.sh`
-  3. `./install.sh`
+No install step, no dependencies beyond what most desktops already have
+(`glib2`, `dbus`, `curl`). Download from the
+[latest release](../../releases/latest), then:
+
+```bash
+chmod +x FeatherRPC-*.AppImage
+./FeatherRPC-*.AppImage
+```
+
+#### Install script
+
+Installs to `~/.local/share/FeatherRPC`, sets up autostart, and puts the
+`featherrpc` CLI on `$PATH`. Download and extract the
+[Linux zip](../../releases/latest), then:
+
+```bash
+chmod +x install.sh uninstall.sh
+./install.sh
+```
 
 Either way, right-click the tray icon afterward to enter the Application
 ID.
