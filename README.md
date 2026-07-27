@@ -27,13 +27,24 @@ installing, on any platform.
 
 ### Windows
 
+#### Installer
+
+No admin rights needed. Download from the
+[latest release](../../releases/latest), then run:
+
+```
+FeatherRPC-Setup-x64.exe
+```
+
+(`-arm64` on ARM64 Windows). Installs to `%LOCALAPPDATA%\FeatherRPC`.
+
+#### Zip
+
 Download and extract the [Windows zip](../../releases/latest), then:
 
 ```
 install.bat
 ```
-
-Installs to `%LOCALAPPDATA%\FeatherRPC`.
 
 ### Linux
 
