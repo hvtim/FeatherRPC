@@ -185,8 +185,8 @@ elseif(APPLE)
     set_target_properties(featherrpc-native PROPERTIES
         OUTPUT_NAME "FeatherRPC"
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/Info.plist.in"
-        MACOSX_BUNDLE_BUNDLE_VERSION "0.1.0"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION "0.1.2"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.2"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.hvtim.featherrpc"
     )
 
