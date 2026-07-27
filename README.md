@@ -27,29 +27,37 @@ installing, on any platform.
 
 ### Windows
 
-1. Download the Windows zip from the
-   [latest release](../../releases/latest) and extract it.
-2. Run `install.bat`. Right-click the tray icon afterward to enter the
-   Application ID.
+Download and extract the [Windows zip](../../releases/latest), then:
+
+```
+install.bat
+```
 
 Installs to `%LOCALAPPDATA%\FeatherRPC`.
 
 ### Linux
 
-Two options:
+#### AppImage
 
-- **AppImage** - no install step, no dependencies beyond what most
-  desktops already have (`glib2`, `dbus`, `curl`).
-  1. Download `FeatherRPC-*.AppImage` from the
-     [latest release](../../releases/latest).
-  2. `chmod +x FeatherRPC-*.AppImage`
-  3. Run it: `./FeatherRPC-*.AppImage`.
-- **install.sh** - installs to `~/.local/share/FeatherRPC`, sets up
-  autostart, and puts the `featherrpc` CLI on `$PATH`.
-  1. Download the Linux zip from the
-     [latest release](../../releases/latest) and extract it.
-  2. `chmod +x install.sh uninstall.sh`
-  3. `./install.sh`
+No install step, no dependencies beyond what most desktops already have
+(`glib2`, `dbus`, `curl`). Download from the
+[latest release](../../releases/latest), then:
+
+```bash
+chmod +x FeatherRPC-*.AppImage
+./FeatherRPC-*.AppImage
+```
+
+#### Install script
+
+Installs to `~/.local/share/FeatherRPC`, sets up autostart, and puts the
+`featherrpc` CLI on `$PATH`. Download and extract the
+[Linux zip](../../releases/latest), then:
+
+```bash
+chmod +x install.sh uninstall.sh
+./install.sh
+```
 
 Either way, right-click the tray icon afterward to enter the Application
 ID.
