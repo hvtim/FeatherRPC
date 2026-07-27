@@ -48,7 +48,9 @@ Right-click the tray icon:
   MPRIS-compliant player; macOS: Music.app only for now)
 - Broadcast on/off
 - Show track number on/off
-- Album art: automatic lookup, a custom image URL, or a static logo only
+- Album art: automatic lookup, a custom image URL, or a static fallback
+  image - and which asset to use for that fallback (see
+  [docs/AlbumArt.md](docs/AlbumArt.md))
 - Poll interval
 - Start at login
 - Show tray icon (Windows; toggling this off takes effect on the next
@@ -71,8 +73,33 @@ featherrpc-cli autostart on
 featherrpc-cli daemon stop
 ```
 
-Run `featherrpc-cli` with no arguments for the full command list. Linux and
-macOS ship the same `featherrpc-cli` tool.
+Run `featherrpc-cli` with no arguments for the full command list, or see
+[docs/CLI.md](docs/CLI.md) for details on every command. macOS ships the
+same `featherrpc-cli` tool.
+
+## CLI control (Linux)
+
+Linux ships the control tool as plain `featherrpc` (not `featherrpc-cli` -
+Linux filesystems are case-sensitive, so it doesn't collide with the
+`FeatherRPC` tray binary the way it would on Windows). It works against a
+running instance in either mode, tray or headless (`--no-tray`) - there's
+nothing to pick between, it just finds whichever is running:
+
+```
+featherrpc appid set <your-discord-app-id>
+featherrpc status
+featherrpc pollinterval set 5000
+featherrpc autostart on
+featherrpc daemon stop
+```
+
+Run `featherrpc` with no arguments for the full command list, or see
+[docs/CLI.md](docs/CLI.md) for details on every command. `autostart`
+manages the `featherrpc.service` systemd **user** unit for headless mode -
+use `systemctl --user ...` against it, never `sudo systemctl ...` (there is
+no system-wide unit by this name). The default tray-mode autostart (XDG
+autostart, set from the tray menu's "Start at login") is separate from this
+and unaffected.
 
 ## Build from source
 
@@ -99,7 +126,9 @@ path is untested - open an issue if you hit build errors.
 - Sends the track to Discord as a "Listening to" Rich Presence activity with
   a live progress bar.
 - Looks up cover art via Apple's iTunes Search API (album, then track),
-  regardless of platform or media source.
+  regardless of platform or media source. See
+  [docs/AlbumArt.md](docs/AlbumArt.md) for how the fallback image works
+  when that lookup misses.
 - Spotify is excluded on every platform - it has its own Discord
   integration.
 

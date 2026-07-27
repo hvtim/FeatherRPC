@@ -8,11 +8,14 @@
 #include "LaunchAgentAutoLaunch.h"
 #include "platform/posix/DaemonSignal.h"
 
+#include <sys/wait.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -39,6 +42,22 @@ bool SpawnDaemon() {
         setsid();
         execl(exePath.c_str(), exePath.c_str(), "--no-tray", static_cast<char*>(nullptr));
         _exit(127); // execl only returns on failure
+    }
+
+    // A healthy headless instance runs until told to stop - it should
+    // never exit on its own within a fraction of a second. This grace
+    // period catches the case IsRunning() can't: tray mode never writes
+    // the pidfile IsRunning() checks, so if a tray instance is already
+    // running, the spawned process here hits its own single-instance
+    // guard and exits immediately. Without this, `daemon start` would
+    // report success for a process that had already exited.
+    for (int i = 0; i < 10; ++i) {
+        int status = 0;
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return true;
 }

@@ -1,0 +1,15 @@
+[Unit]
+Description=FeatherRPC headless daemon (Discord Rich Presence from MPRIS)
+
+[Service]
+ExecStart=/usr/bin/FeatherRPC --no-tray
+Restart=on-failure
+# Exit code 75: FeatherRPC's own single-instance guard refused to start
+# because a tray instance (or another headless one) is already running -
+# an intentional, expected exit, not a crash. Without this, Restart=
+# on-failure would keep respawning this unit in a tight loop for as long
+# as the other instance keeps holding the lock.
+RestartPreventExitStatus=75
+
+[Install]
+WantedBy=default.target

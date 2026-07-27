@@ -28,6 +28,7 @@ constexpr int kCmdToggleTrackNumber = 4;
 constexpr int kCmdToggleStartAtLogin = 5;
 constexpr int kCmdExit = 6;
 constexpr int kCmdToggleTrayIcon = 7;
+constexpr int kCmdSetFallbackKey = 8;
 constexpr int kCmdArtModeAuto = 200;
 constexpr int kCmdArtModeCustom = 201;
 constexpr int kCmdArtModeOff = 202;
@@ -125,7 +126,12 @@ void StatusItemTray::RebuildMenu() {
     };
     addArtItem(@"Automatic (look up cover art)", kCmdArtModeAuto, "Auto");
     addArtItem(@"Custom image URL...", kCmdArtModeCustom, "Custom");
-    addArtItem(@"Static logo only", kCmdArtModeOff, "Off");
+    addArtItem(@"Fallback image only", kCmdArtModeOff, "Off");
+    NSMenuItem* setFallbackKeyItem = [artMenu addItemWithTitle:@"Set Fallback Image Key..."
+                                                          action:@selector(menuAction:)
+                                                   keyEquivalent:@""];
+    setFallbackKeyItem.target = _impl->target;
+    setFallbackKeyItem.tag = kCmdSetFallbackKey;
 
     NSMenu* pollMenu = [[NSMenu alloc] init];
     NSMenuItem* pollParent = [menu addItemWithTitle:@"Poll Interval" action:nil keyEquivalent:@""];
@@ -195,6 +201,19 @@ void StatusItemTray::HandleCommand(int commandId) {
         }
         _config.customArtUrl = value;
         NotifyConfigChanged();
+        return;
+    }
+
+    if (commandId == kCmdSetFallbackKey) {
+        std::string value = _config.largeImageKey;
+        std::string original = value;
+        if (OnEditFallbackImageKey) {
+            OnEditFallbackImageKey(value);
+        }
+        if (value != original) {
+            _config.largeImageKey = value;
+            NotifyConfigChanged();
+        }
         return;
     }
 
