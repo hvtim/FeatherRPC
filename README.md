@@ -24,10 +24,10 @@ for what's verified on each platform before relying on this.
 
 #### Installer
 
-No admin rights needed. Download `FeatherRPC-<version>-Setup-x64.exe`
-(`-arm64` on ARM64 Windows) from the
-[latest release](../../releases/latest) and run it. Installs to
-`%LOCALAPPDATA%\FeatherRPC`.
+No admin rights needed. Download
+`FeatherRPC-<version>-windows-x64-Installer.exe` (`-arm64` on ARM64
+Windows) from the [latest release](../../releases/latest) and run it.
+Installs to `%LOCALAPPDATA%\FeatherRPC`.
 
 #### Zip
 
