@@ -20,7 +20,10 @@ glossed over.
   been run once. `installer/macos/build-dmg.sh` (the `.dmg` packaging
   script) is the same story - written against documented `hdiutil`/
   `osascript` behavior, never run. Treat all of it as "believed correct,"
-  not "verified."
+  not "verified." This now also covers `MediaRemoteSource` (the "Now
+  Playing (any app)" source, see the scope-limit entry below) - the
+  `FetchContent`-built adapter has never actually been built or run on a
+  real Mac either.
 - **macOS: no `.icns` app icon.** `assets/icon.png` (512x512) exists, but
   nobody has run `iconutil` to build an `.iconset`/`.icns` from it, and
   `native/src/platform/macos/Info.plist.in` has no `CFBundleIconFile` key.
@@ -64,12 +67,22 @@ glossed over.
 - **Spotify is excluded on every platform, on purpose.** It has its own
   native Discord Rich Presence integration; this app would just be a
   redundant, worse second source.
-- **macOS: Music.app only, no other-app support.** Apple locked down
-  `MediaRemote.framework` (the only way any third-party tool reads *other*
-  apps' now-playing state on macOS) behind entitlement checks starting in
-  macOS 15.4, breaking most existing workarounds. Reading other apps on Mac
-  is a separately-scoped, clearly-risk-labeled feature to revisit later, not
-  a gap in this implementation.
+- **macOS: "Now Playing (any app)" depends on an unofficial workaround, not
+  a public API.** Apple locked `MediaRemote.framework` itself (the only way
+  any third-party tool reads *other* apps' now-playing state on macOS)
+  behind an Apple-only entitlement starting in macOS 15.4. `MediaRemoteSource`
+  works around this via the vendored
+  [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter)
+  project, which shells out to `/usr/bin/perl` (one of the few processes
+  Apple still grants the entitlement to) rather than calling the framework
+  directly. Apple could close this off entirely in a future macOS release
+  with no warning; a lazy one-time self-test (the adapter's own `test`
+  command) logs a clear warning and stops retrying if that happens, rather
+  than spamming a doomed process every poll. Music.app's own source
+  (`MusicMediaSource`, Scripting Bridge) is unaffected either way - it's a
+  separate, official-API implementation, not built on top of this one.
+  Spotify is excluded from the "any app" source for the same reason it's
+  excluded everywhere else in this app (see above).
 - **Windows has no background service, and never will.** A Windows Service
   (SCM-managed, Session 0) cannot `CoCreateInstance` into
   the interactive user's `iTunes.exe` COM server or see that user's
@@ -114,6 +127,11 @@ glossed over.
   callback could in theory fire after the tray object is destroyed during
   shutdown, a use-after-free. Low risk, flagged, not fixed - moot until this
   code runs anywhere for the first time.
+- **macOS**: `MediaRemoteSource` depends on `/usr/bin/perl` being present.
+  Apple has signaled long-term deprecation of bundled scripting runtimes
+  (Perl/Python/Ruby) in macOS; it's still shipping as of the most recent
+  upstream `mediaremote-adapter` testing, but there's no fallback if a
+  future macOS drops it entirely - Music.app's own source is unaffected.
 
 ## Fixed, but worth knowing about (bugs hit during development)
 

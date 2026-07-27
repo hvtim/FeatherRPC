@@ -1,4 +1,5 @@
 #include "StatusItemTray.h"
+#include "MediaRemoteSource.h"
 
 #import <Cocoa/Cocoa.h>
 
@@ -33,6 +34,7 @@ constexpr int kCmdArtModeAuto = 200;
 constexpr int kCmdArtModeCustom = 201;
 constexpr int kCmdArtModeOff = 202;
 constexpr int kCmdPollIntervalBase = 300;
+constexpr int kCmdMediaSourceBase = 400; // + index into GetAvailableSources()
 
 const std::vector<int>& PollIntervalPresetsMs() {
     static const std::vector<int> presets = {1000, 2000, 5000, 10000};
@@ -104,11 +106,24 @@ void StatusItemTray::RebuildMenu() {
 
     addItem(@"Set Discord Application ID...", kCmdSetAppId, false);
 
-    // Music.app is the only source in this phase (no MediaRemote/other-
-    // apps support - see the plan's Phase 3 scope note), so this is a
-    // disabled label rather than the Windows build's Media Source submenu.
-    NSMenuItem* sourceLabel = [menu addItemWithTitle:@"Media Source: Music" action:nil keyEquivalent:@""];
-    sourceLabel.enabled = false;
+    // Unlike Windows/Linux, the list here is fixed (Music.app's own
+    // source, plus the MediaRemote-adapter-backed "any app" source) -
+    // there's nothing to dynamically re-enumerate, so it's rebuilt
+    // straight from GetAvailableSources() every time rather than needing
+    // an OnRefreshMediaSources-style hook.
+    _mediaSources = platform_macos::MediaRemoteSource::GetAvailableSources();
+    NSMenu* sourceMenu = [[NSMenu alloc] init];
+    NSMenuItem* sourceParent = [menu addItemWithTitle:@"Media Source" action:nil keyEquivalent:@""];
+    sourceParent.submenu = sourceMenu;
+    for (size_t i = 0; i < _mediaSources.size(); ++i) {
+        NSString* title = [NSString stringWithUTF8String:_mediaSources[i].displayName.c_str()];
+        NSMenuItem* item = [sourceMenu addItemWithTitle:title action:@selector(menuAction:) keyEquivalent:@""];
+        item.target = _impl->target;
+        item.tag = kCmdMediaSourceBase + static_cast<int>(i);
+        bool selected = _mediaSources[i].id == _config.mediaSource
+            || (_mediaSources[i].id == "Music" && _config.mediaSource != "MediaRemote");
+        item.state = selected ? NSControlStateValueOn : NSControlStateValueOff;
+    }
 
     [menu addItem:[NSMenuItem separatorItem]];
 
@@ -259,6 +274,13 @@ void StatusItemTray::HandleCommand(int commandId) {
     if (commandId >= kCmdPollIntervalBase
         && commandId < kCmdPollIntervalBase + static_cast<int>(PollIntervalPresetsMs().size())) {
         _config.pollIntervalMs = PollIntervalPresetsMs()[commandId - kCmdPollIntervalBase];
+        NotifyConfigChanged();
+        return;
+    }
+
+    if (commandId >= kCmdMediaSourceBase
+        && commandId < kCmdMediaSourceBase + static_cast<int>(_mediaSources.size())) {
+        _config.mediaSource = _mediaSources[commandId - kCmdMediaSourceBase].id;
         NotifyConfigChanged();
         return;
     }

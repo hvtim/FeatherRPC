@@ -13,6 +13,10 @@ ARM64 build tools component).
 
 macOS: `cmake -B build -G Xcode && cmake --build build --config Release`
 produces a `FeatherRPC.app` bundle. Requires Xcode command line tools.
+First configure needs network access - it pulls
+[mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) via
+`FetchContent` (used by the "any app" media source; see
+[KnownIssues.md](KnownIssues.md)) and builds it alongside the app.
 
 Linux: same `cmake -B build && cmake --build build` pattern, generator
 picked automatically (Ninja or Makefiles). Requires `gio-2.0`, `dbus-1`,
