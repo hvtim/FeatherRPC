@@ -24,18 +24,15 @@ for what's verified on each platform before relying on this.
 
 #### Installer
 
-No admin rights needed. Download from the
-[latest release](../../releases/latest), then run:
-
-```
-FeatherRPC-Setup-x64.exe
-```
-
-(`-arm64` on ARM64 Windows). Installs to `%LOCALAPPDATA%\FeatherRPC`.
+No admin rights needed. Download `FeatherRPC-<version>-Setup-x64.exe`
+(`-arm64` on ARM64 Windows) from the
+[latest release](../../releases/latest) and run it. Installs to
+`%LOCALAPPDATA%\FeatherRPC`.
 
 #### Zip
 
-Download and extract the [Windows zip](../../releases/latest), then:
+Download and extract `FeatherRPC-<version>-windows-x64.zip` (`-arm64` on
+ARM64 Windows) from the [latest release](../../releases/latest), then:
 
 ```
 install.bat
@@ -57,8 +54,9 @@ chmod +x FeatherRPC-*.AppImage
 #### Install script
 
 Installs to `~/.local/share/FeatherRPC`, sets up autostart, and puts the
-`featherrpc` CLI on `$PATH`. Download and extract the
-[Linux zip](../../releases/latest), then:
+`featherrpc` CLI on `$PATH`. Download and extract
+`FeatherRPC-<version>-linux-x64.zip` from the
+[latest release](../../releases/latest), then:
 
 ```bash
 chmod +x install.sh uninstall.sh
