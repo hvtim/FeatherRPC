@@ -7,7 +7,12 @@ namespace core {
 
 struct AppConfig {
     std::string clientId = "YOUR_DISCORD_CLIENT_ID_HERE";
-    std::string largeImageKey = "logo";
+
+    // Must match a Rich Presence Art Asset uploaded to this Discord
+    // application (Developer Portal > Rich Presence > Art Assets) under
+    // this exact name. See docs/AlbumArt.md.
+    std::string largeImageKey = "fallback";
+
     int pollIntervalMs = 2000;
     bool broadcastEnabled = true;
     bool showTrackNumber = true;

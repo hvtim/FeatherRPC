@@ -18,6 +18,7 @@ constexpr UINT CMD_TOGGLE_TRACK_NUMBER = 4;
 constexpr UINT CMD_TOGGLE_START_AT_LOGIN = 5;
 constexpr UINT CMD_EXIT = 6;
 constexpr UINT CMD_TOGGLE_TRAY_ENABLED = 7;
+constexpr UINT CMD_SET_FALLBACK_KEY = 8;
 
 constexpr UINT CMD_ART_MODE_AUTO = 200;
 constexpr UINT CMD_ART_MODE_CUSTOM = 201;
@@ -194,10 +195,11 @@ HMENU TrayIcon::BuildMenu() {
     HMENU artMenu = CreatePopupMenu();
     AppendMenuW(artMenu, MF_STRING, CMD_ART_MODE_AUTO, L"Automatic (look up cover art)");
     AppendMenuW(artMenu, MF_STRING, CMD_ART_MODE_CUSTOM, L"Custom image URL...");
-    AppendMenuW(artMenu, MF_STRING, CMD_ART_MODE_OFF, L"Static logo only");
+    AppendMenuW(artMenu, MF_STRING, CMD_ART_MODE_OFF, L"Fallback image only");
     UINT artChecked = config_.artMode == "Custom" ? CMD_ART_MODE_CUSTOM
         : config_.artMode == "Off" ? CMD_ART_MODE_OFF : CMD_ART_MODE_AUTO;
     CheckMenuRadioItem(artMenu, CMD_ART_MODE_AUTO, CMD_ART_MODE_OFF, artChecked, MF_BYCOMMAND);
+    AppendMenuW(artMenu, MF_STRING, CMD_SET_FALLBACK_KEY, L"Set Fallback Image Key...");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(artMenu), L"Album Art");
 
     HMENU pollMenu = CreatePopupMenu();
@@ -270,6 +272,19 @@ void TrayIcon::HandleCommand(UINT id) {
         }
         if (wideId != original) {
             config_.clientId = platform_windows::NarrowFromWide(wideId);
+            NotifyConfigChanged();
+        }
+        return;
+    }
+
+    if (id == CMD_SET_FALLBACK_KEY) {
+        std::wstring wideKey = platform_windows::WideFromNarrow(config_.largeImageKey);
+        std::wstring original = wideKey;
+        if (OnEditFallbackImageKey) {
+            OnEditFallbackImageKey(wideKey);
+        }
+        if (wideKey != original) {
+            config_.largeImageKey = platform_windows::NarrowFromWide(wideKey);
             NotifyConfigChanged();
         }
         return;
