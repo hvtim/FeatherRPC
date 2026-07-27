@@ -20,11 +20,6 @@ for what's verified on each platform before relying on this.
 
 ## Install
 
-Create a Discord application at
-[discord.com/developers/applications](https://discord.com/developers/applications)
-and copy the Application ID - you'll enter it from the tray menu after
-installing, on any platform.
-
 ### Windows
 
 #### Installer
@@ -70,13 +65,24 @@ chmod +x install.sh uninstall.sh
 ./install.sh
 ```
 
-Either way, right-click the tray icon afterward to enter the Application
-ID.
-
 ### macOS
 
 No prebuilt binary yet - see [docs/Building.md](docs/Building.md) to
 build from source.
+
+## Usage
+
+1. Create a Discord application at
+   [discord.com/developers/applications](https://discord.com/developers/applications)
+   and copy its Application ID. No bot account or OAuth setup needed -
+   Rich Presence connects over Discord's local IPC protocol, not the bot
+   API.
+2. Install FeatherRPC (see [Install](#install) above).
+3. Right-click the tray icon, paste the Application ID, and set any other
+   preferences from the same menu (see [Tray menu](#tray-menu) below).
+
+The Discord desktop app has to be running - Rich Presence connects to it
+locally, not through the browser.
 
 ## Tray menu
 
