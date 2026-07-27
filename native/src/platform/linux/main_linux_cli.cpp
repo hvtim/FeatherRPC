@@ -18,12 +18,23 @@
 
 namespace {
 
-// Matches installer/linux/install.sh's DATA_HOME/INSTALL_DIR exactly - the
-// one place this needs updating if the install location ever changes.
-// The CLI tool is deliberately installed elsewhere (~/.local/bin, so it's
-// on $PATH - see install.sh), so unlike macOS/Windows there's no way to
-// find FeatherRPC relative to this binary's own location.
+// The CLI tool is deliberately installed elsewhere from the main binary
+// (~/.local/bin, so it's on $PATH - see install.sh), so unlike macOS/
+// Windows there's no way to find FeatherRPC relative to this binary's own
+// location. Checks every layout this app can be installed under: a
+// distro package (AUR/COPR/PPA - /usr/bin), a manual `cmake --install`
+// (/usr/local/bin), and install.sh's own per-user layout
+// ($XDG_DATA_HOME/FeatherRPC, matching its DATA_HOME/INSTALL_DIR exactly -
+// the one place this needs updating if that layout ever changes). First
+// one that actually exists wins; the per-user layout is the fallback if
+// none do, same guess this always made before distro packaging existed.
 std::filesystem::path AppExePath() {
+    for (const char* candidate : {"/usr/bin/FeatherRPC", "/usr/local/bin/FeatherRPC"}) {
+        if (std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+    }
+
     const char* dataHome = std::getenv("XDG_DATA_HOME");
     std::filesystem::path base;
     if (dataHome && *dataHome) {

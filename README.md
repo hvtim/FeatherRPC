@@ -3,19 +3,19 @@
 # FeatherRPC
 
 Syncs whatever's currently playing to Discord as a Rich Presence status.
-iTunes, VLC, browsers, or anything else that reports now-playing info to
-Windows; any MPRIS player on Linux; Music.app on macOS. Native C++, no
-runtime, no bundled GUI toolkit. Idle memory use is a few megabytes.
+
+- Windows: iTunes, VLC, browsers, or anything else that reports
+  now-playing info to the system.
+- Linux: any MPRIS-compliant player.
+- macOS: Music.app.
+
+Native C++, no runtime, no bundled GUI toolkit. Idle memory use is a few
+megabytes.
 
 > Built with the help of [Claude Code](https://claude.com/claude-code)
 > (Anthropic's AI coding agent).
 
-Used to be called iTunes-RPC and only worked with iTunes on Windows.
-Renamed and rewritten to match what it does now. The old project's
-history, including its own `CHANGELOG.md` and `KNOWN_ISSUES.md`, is kept at
-the archived [hvtim/iTunes-RPC](https://github.com/hvtim/iTunes-RPC) repo.
-
-**v0.1.0, not production-stable.** Check [KNOWN_ISSUES.md](KNOWN_ISSUES.md)
+**v0.1.0, not production-stable.** Check [docs/KnownIssues.md](docs/KnownIssues.md)
 for what's verified on each platform before relying on this.
 
 ## Install
@@ -30,119 +30,64 @@ for what's verified on each platform before relying on this.
 3. Run `install.bat`. Right-click the tray icon afterward to enter the
    Application ID.
 
-Installs to `%LOCALAPPDATA%\FeatherRPC`. Pass `-NoTray` to `install.ps1`
-(or edit the shortcut afterward) to run headless instead - see
-[Headless / CLI mode](#headless--cli-mode-windows) below.
+Installs to `%LOCALAPPDATA%\FeatherRPC`.
 
 ### Linux / macOS
 
 See [installer/linux](installer/linux) / [installer/macos](installer/macos).
-macOS has no prebuilt binary yet - see [Build from source](#build-from-source).
+macOS has no prebuilt binary yet - see [docs/Building.md](docs/Building.md).
 
 ## Tray menu
 
 Right-click the tray icon:
 
 - Set Discord Application ID
-- Media source (Windows: iTunes or any SMTC-reporting app; Linux: any
-  MPRIS-compliant player; macOS: Music.app only for now)
+- Media source
 - Broadcast on/off
 - Show track number on/off
-- Album art: automatic lookup, a custom image URL, or a static fallback
-  image - and which asset to use for that fallback (see
-  [docs/AlbumArt.md](docs/AlbumArt.md))
+- Album art settings (see [docs/AlbumArt.md](docs/AlbumArt.md))
 - Poll interval
 - Start at login
-- Show tray icon (Windows; toggling this off takes effect on the next
-  launch, not live - a running process can't remove its own tray icon
-  mid-session)
+- Show tray icon (applies on next launch)
 
-Every change applies immediately to the running instance except the tray
-toggle itself.
+## CLI control
 
-## Headless / CLI mode (Windows)
-
-`FeatherRPC.exe --no-tray` runs with no tray icon at all. Control it with the
-bundled `featherrpc-cli.exe`:
-
-```
-featherrpc-cli appid set <your-discord-app-id>
-featherrpc-cli status
-featherrpc-cli pollinterval set 5000
-featherrpc-cli autostart on
-featherrpc-cli daemon stop
-```
-
-Run `featherrpc-cli` with no arguments for the full command list, or see
-[docs/CLI.md](docs/CLI.md) for details on every command. macOS ships the
-same `featherrpc-cli` tool.
-
-## CLI control (Linux)
-
-Linux ships the control tool as plain `featherrpc` (not `featherrpc-cli` -
-Linux filesystems are case-sensitive, so it doesn't collide with the
-`FeatherRPC` tray binary the way it would on Windows). It works against a
-running instance in either mode, tray or headless (`--no-tray`) - there's
-nothing to pick between, it just finds whichever is running:
+Control a running instance (tray or headless) from the command line.
+Windows/macOS: `featherrpc-cli`. Linux: `featherrpc`.
 
 ```
 featherrpc appid set <your-discord-app-id>
 featherrpc status
-featherrpc pollinterval set 5000
 featherrpc autostart on
-featherrpc daemon stop
 ```
 
-Run `featherrpc` with no arguments for the full command list, or see
-[docs/CLI.md](docs/CLI.md) for details on every command. `autostart`
-manages the `featherrpc.service` systemd **user** unit for headless mode -
-use `systemctl --user ...` against it, never `sudo systemctl ...` (there is
-no system-wide unit by this name). The default tray-mode autostart (XDG
-autostart, set from the tray menu's "Start at login") is separate from this
-and unaffected.
+Run with no arguments for the full command list, or see
+[docs/CLI.md](docs/CLI.md).
 
-## Build from source
-
-Requires CMake 3.20+ and a C++17 compiler.
-
-```
-cd native
-cmake -B build -G "Visual Studio 17 2022" -A x64   # or your platform's generator
-cmake --build build --config Release
-```
-
-Windows also cross-compiles for ARM64 with `-A ARM64` (a v143 ARM64 build
-tools component is required); this has never been run on ARM64 hardware.
-
-macOS: `cmake -B build -G Xcode && cmake --build build --config Release`
-produces a `FeatherRPC.app` bundle. Requires Xcode command line tools. This
-path is untested - open an issue if you hit build errors.
+Run the app itself with `--no-tray` for headless mode.
 
 ## How it works
 
 - Polls the selected media source every 2 seconds (COM for iTunes on
   Windows, C++/WinRT SMTC for other Windows apps, MPRIS/D-Bus on Linux,
   Scripting Bridge for Music.app on macOS).
-- Sends the track to Discord as a "Listening to" Rich Presence activity with
-  a live progress bar.
-- Looks up cover art via Apple's iTunes Search API (album, then track),
-  regardless of platform or media source. See
-  [docs/AlbumArt.md](docs/AlbumArt.md) for how the fallback image works
-  when that lookup misses.
-- Spotify is excluded on every platform - it has its own Discord
-  integration.
+- Sends a "Listening to" Rich Presence activity with a live progress bar.
+- Looks up cover art automatically (Apple's iTunes Search API, then
+  MusicBrainz + Cover Art Archive). See [docs/AlbumArt.md](docs/AlbumArt.md).
+- Spotify is excluded - it has its own Discord integration.
 
 ## Known limitations
 
-Full detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Headlines:
+Full detail in [docs/KnownIssues.md](docs/KnownIssues.md). Headlines:
 
 - The "Listening to" wording isn't officially supported for third-party
   apps and could change in a future Discord update.
-- Album art requires a match on Apple's catalog; unmatched tracks fall back
-  to a static logo.
-- macOS is code-complete but has never been built or run - no Mac hardware
-  was available during development.
-- Linux tray rendering has never been visually confirmed outside WSL.
+- Album art falls back to a static image if no automatic match is found.
+- macOS is code-complete but has never been built or run - no Mac
+  hardware was available during development.
+- Linux tray rendering is confirmed on KDE Plasma 6; other desktop
+  environments are untested.
+- Windows ARM64 compiles but has never run on real ARM64 hardware.
 - No Windows *service* here - Session 0 isolation blocks access to the
-  interactive user's iTunes/SMTC session. Headless mode is a login-launched
-  process, not `sc.exe`.
+  interactive user's iTunes/SMTC session.
+- No code signing on any platform.

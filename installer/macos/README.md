@@ -46,24 +46,6 @@ either can run steps 1-2 above by hand for now.
 
 ## Known limitations
 
-- **`build-dmg.sh` has never been run.** It's written against documented
-  `hdiutil`/`osascript` behavior and the AppleScript pattern common to other
-  open source Mac apps' release scripts, not verified on real hardware.
-  Same caveat as the rest of this project's macOS support - treat it as
-  believed-correct, not tested.
-- **No app icon.** `native/src/platform/macos/Info.plist.in` has no
-  `CFBundleIconFile` key, and there's no `.icns` anywhere in the repo -
-  `assets/icon.png` (512x512) exists and is a fine source, but nobody has
-  run `iconutil` to build the `.iconset`/`.icns` from it or wired the result
-  into the bundle. Until that happens, the shipped `.app` shows the generic
-  macOS document icon everywhere (Finder, Dock, the `.dmg` window itself).
-- **Unsigned and not notarized.** No Apple Developer account has ever been
-  used in this project. A `.dmg` downloaded from the internet and opened
-  will hit Gatekeeper's "cannot be opened because the developer cannot be
-  verified" block on first launch - the user has to right-click > Open (or
-  clear the quarantine flag) to get past it. `install.sh` run locally from
-  an already-extracted folder doesn't trigger the same download-quarantine
-  flag the same way, which is part of why the `.dmg` needs this called out
-  specifically rather than assumed equivalent to the script path. Real fix
-  is code signing + notarization, both of which need an Apple Developer
-  account and real hardware - out of scope here.
+`build-dmg.sh` has never been run, there's no app icon, and nothing here
+is signed or notarized. Full detail in
+[docs/KnownIssues.md](../../docs/KnownIssues.md).
