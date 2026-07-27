@@ -15,7 +15,7 @@ megabytes.
 > Built with the help of [Claude Code](https://claude.com/claude-code)
 > (Anthropic's AI coding agent).
 
-**v0.1.0, not production-stable.** Check [KNOWN_ISSUES.md](KNOWN_ISSUES.md)
+**v0.1.0, not production-stable.** Check [docs/KnownIssues.md](docs/KnownIssues.md)
 for what's verified on each platform before relying on this.
 
 ## Install
@@ -35,7 +35,7 @@ Installs to `%LOCALAPPDATA%\FeatherRPC`.
 ### Linux / macOS
 
 See [installer/linux](installer/linux) / [installer/macos](installer/macos).
-macOS has no prebuilt binary yet - see [Build from source](#build-from-source).
+macOS has no prebuilt binary yet - see [docs/Building.md](docs/Building.md).
 
 ## Tray menu
 
@@ -66,22 +66,6 @@ Run with no arguments for the full command list, or see
 
 Run the app itself with `--no-tray` for headless mode.
 
-## Build from source
-
-Requires CMake 3.20+ and a C++17 compiler.
-
-```
-cd native
-cmake -B build -G "Visual Studio 17 2022" -A x64   # or your platform's generator
-cmake --build build --config Release
-```
-
-Windows also cross-compiles for ARM64 with `-A ARM64` (requires the
-v143 ARM64 build tools component).
-
-macOS: `cmake -B build -G Xcode && cmake --build build --config Release`
-produces a `FeatherRPC.app` bundle. Requires Xcode command line tools.
-
 ## How it works
 
 - Polls the selected media source every 2 seconds (COM for iTunes on
@@ -94,7 +78,7 @@ produces a `FeatherRPC.app` bundle. Requires Xcode command line tools.
 
 ## Known limitations
 
-Full detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md). Headlines:
+Full detail in [docs/KnownIssues.md](docs/KnownIssues.md). Headlines:
 
 - The "Listening to" wording isn't officially supported for third-party
   apps and could change in a future Discord update.
