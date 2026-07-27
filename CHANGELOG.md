@@ -11,12 +11,17 @@ SemVer starting at 0.1.0.
 
 ## [Unreleased]
 
-Windows now ships a real installer (`FeatherRPC-Setup-x64.exe`/`-arm64.exe`,
-built with NSIS) alongside the existing zip - same per-user install under
-`%LOCALAPPDATA%\FeatherRPC`, Start Menu shortcut, optional autostart/desktop
-shortcut, and Add/Remove Programs entry, behind a normal installer wizard
-instead of a batch script and PowerShell prompts. See
+Windows now ships a real installer (`FeatherRPC-<version>-Setup-x64.exe`/
+`-arm64.exe`, built with NSIS) alongside the existing zip - same per-user
+install under `%LOCALAPPDATA%\FeatherRPC`, Start Menu shortcut, optional
+autostart/desktop shortcut, and Add/Remove Programs entry, behind a normal
+installer wizard instead of a batch script and PowerShell prompts. See
 [installer/windows/installer.nsi](installer/windows/installer.nsi).
+
+- Release asset filenames now all carry the version, and the Windows
+  installer's own name says "Setup" so it isn't mistaken for the zip.
+- Discord Application ID setup moved out of the README's Install section
+  into its own OS-agnostic Usage section - it isn't an install step.
 
 ## [0.1.1] - 2026-07-27
 
