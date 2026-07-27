@@ -20,27 +20,19 @@ for what's verified on each platform before relying on this.
 
 ## Install
 
-Create a Discord application at
-[discord.com/developers/applications](https://discord.com/developers/applications)
-and copy the Application ID - you'll enter it from the tray menu after
-installing, on any platform.
-
 ### Windows
 
 #### Installer
 
-No admin rights needed. Download from the
-[latest release](../../releases/latest), then run:
-
-```
-FeatherRPC-Setup-x64.exe
-```
-
-(`-arm64` on ARM64 Windows). Installs to `%LOCALAPPDATA%\FeatherRPC`.
+No admin rights needed. Download
+`FeatherRPC-<version>-windows-x64-Installer.exe` (`-arm64` on ARM64
+Windows) from the [latest release](../../releases/latest) and run it.
+Installs to `%LOCALAPPDATA%\FeatherRPC`.
 
 #### Zip
 
-Download and extract the [Windows zip](../../releases/latest), then:
+Download and extract `FeatherRPC-<version>-windows-x64.zip` (`-arm64` on
+ARM64 Windows) from the [latest release](../../releases/latest), then:
 
 ```
 install.bat
@@ -62,21 +54,33 @@ chmod +x FeatherRPC-*.AppImage
 #### Install script
 
 Installs to `~/.local/share/FeatherRPC`, sets up autostart, and puts the
-`featherrpc` CLI on `$PATH`. Download and extract the
-[Linux zip](../../releases/latest), then:
+`featherrpc` CLI on `$PATH`. Download and extract
+`FeatherRPC-<version>-linux-x64.zip` from the
+[latest release](../../releases/latest), then:
 
 ```bash
 chmod +x install.sh uninstall.sh
 ./install.sh
 ```
 
-Either way, right-click the tray icon afterward to enter the Application
-ID.
-
 ### macOS
 
 No prebuilt binary yet - see [docs/Building.md](docs/Building.md) to
 build from source.
+
+## Usage
+
+1. Create a Discord application at
+   [discord.com/developers/applications](https://discord.com/developers/applications)
+   and copy its Application ID. No bot account or OAuth setup needed -
+   Rich Presence connects over Discord's local IPC protocol, not the bot
+   API.
+2. Install FeatherRPC (see [Install](#install) above).
+3. Right-click the tray icon, paste the Application ID, and set any other
+   preferences from the same menu (see [Tray menu](#tray-menu) below).
+
+The Discord desktop app has to be running - Rich Presence connects to it
+locally, not through the browser.
 
 ## Tray menu
 

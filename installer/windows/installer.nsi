@@ -12,9 +12,9 @@
 ; featherrpc-cli.exe, and must be an absolute path - NSIS resolves File
 ; paths relative to this .nsi file's own directory, not the invocation
 ; directory, so a relative APP_DIR silently resolves to the wrong place.
-; ARCH is only used for the output filename (FeatherRPC-Setup-<ARCH>.exe);
-; the same script builds both x64 and arm64 installers. Output lands in
-; the repo root.
+; VERSION and ARCH are used for the output filename
+; (FeatherRPC-<VERSION>-windows-<ARCH>-Installer.exe); the same script
+; builds both x64 and arm64 installers. Output lands in the repo root.
 
 !ifndef APP_DIR
 !error "Pass /DAPP_DIR=<path to built FeatherRPC.exe/featherrpc-cli.exe>"
@@ -29,7 +29,7 @@
 !include "MUI2.nsh"
 
 Name "FeatherRPC"
-OutFile "..\..\FeatherRPC-Setup-${ARCH}.exe"
+OutFile "..\..\FeatherRPC-${VERSION}-windows-${ARCH}-Installer.exe"
 InstallDir "$LOCALAPPDATA\FeatherRPC"
 InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FeatherRPC" "InstallLocation"
 RequestExecutionLevel user
