@@ -79,7 +79,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     auto singleInstanceLock = platform_windows::SingleInstanceLock::TryAcquire();
     if (!singleInstanceLock.Acquired()) {
         core::Log::Write("[error] FeatherRPC is already running - exiting.");
-        return 1;
+        // 75, not 1 - same convention as the Linux build, so any exit
+        // code inspection stays consistent across platforms even though
+        // Windows/macOS have no systemd-equivalent consumer of it today.
+        return 75;
     }
 
     core::AppConfig config = core::LoadConfig(core::GetConfigFilePath());

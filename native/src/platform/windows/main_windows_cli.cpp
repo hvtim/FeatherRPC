@@ -39,9 +39,20 @@ bool SpawnDaemon() {
     if (!ok) {
         return false;
     }
-    CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    return true;
+
+    // A healthy headless instance runs until told to stop - it should
+    // never exit on its own within a fraction of a second. This grace
+    // period catches the case IsRunning() can't: a tray instance is
+    // already running (invisible to IsRunning() - only headless mode
+    // registers the named Events it checks), so the spawned process hits
+    // its own single-instance guard and exits immediately. Without this,
+    // `daemon start` would report success ("Started, but not confirmed
+    // running yet.") for a process that had already exited.
+    DWORD waitResult = WaitForSingleObject(pi.hProcess, 500);
+    bool exitedEarly = waitResult == WAIT_OBJECT_0;
+    CloseHandle(pi.hProcess);
+    return !exitedEarly;
 }
 
 } // namespace

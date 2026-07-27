@@ -5,12 +5,15 @@
 #include "platform/linux/SystemdUserAutoLaunch.h"
 #include "platform/posix/DaemonSignal.h"
 
+#include <sys/wait.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -44,6 +47,21 @@ bool SpawnDaemon() {
         std::string exe = AppExePath().string();
         execl(exe.c_str(), exe.c_str(), "--no-tray", static_cast<char*>(nullptr));
         std::exit(127); // execl only returns on failure
+    }
+
+    // A healthy headless instance runs until told to stop - it should
+    // never exit on its own within a fraction of a second. IsRunning()
+    // already catches "something's already running" before this point on
+    // Linux (tray mode writes the pidfile too), so this is defense in
+    // depth against any other early-exit failure, same check as the
+    // Windows/macOS builds have for their own (real) discoverability gap.
+    for (int i = 0; i < 10; ++i) {
+        int status = 0;
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return true;
 }

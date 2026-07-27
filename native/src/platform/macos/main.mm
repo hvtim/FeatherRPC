@@ -37,7 +37,10 @@ int main(int argc, const char** argv) {
         auto singleInstanceLock = platform_posix::SingleInstanceLock::TryAcquire();
         if (!singleInstanceLock.Acquired()) {
             core::Log::Write("[error] FeatherRPC is already running - exiting.");
-            return 1;
+            // 75, not 1 - same convention as the Linux build (see
+            // featherrpc.service's RestartPreventExitStatus=75), so any
+            // exit code inspection stays consistent across platforms.
+            return 75;
         }
 
         core::AppConfig config = core::LoadConfig(core::GetConfigFilePath());
