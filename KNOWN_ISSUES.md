@@ -233,6 +233,29 @@ debt - none of it is glossed over.
   nothing actually changed. This is core `SniTray.cpp` behavior, so it
   applies to every Linux distribution channel (AUR, COPR, AppImage,
   `install.sh`) - none of them carry a separate copy of this code.
+- **Linux: tray icon showed as a generic placeholder under an AppImage run,
+  with no way to fix it via `install.sh` (there's no install step at all).**
+  `IconName` (a themed icon name, looked up by the host against installed
+  icon themes) only resolves when something has actually put `icon.png`
+  into a theme directory - true for `install.sh`, never true for a bare
+  AppImage run. Confirmed live that the AppIndicator extension doesn't fall
+  back to `IconPixmap` when a non-empty `IconName` fails to resolve; it just
+  shows a generic icon instead. Fixed by always sending an empty `IconName`
+  and relying on `IconPixmap` (raw ARGB32 pixel data, no theme lookup
+  needed) exclusively - confirmed against Tailscale's own systray, which
+  shows correctly on the same host/extension and uses the identical
+  approach. The pixel data is baked into
+  `native/src/platform/linux/AppIcon.h` ahead of time from `assets/icon.png`
+  via `tools/png_to_header.py` (run manually, not part of the normal
+  build - only needs re-running if the icon itself changes) - no new
+  runtime dependency (no `gdk-pixbuf`, no `libpng`).
+  A first attempt at building the `IconPixmap` GVariant had a real bug of
+  its own: wrapping an already-complete `ay` (byte array) GVariant inside
+  a second `GVariantBuilder` expecting individual byte elements is a type
+  mismatch that silently produced a 0-byte array instead of the real 16384
+  bytes - confirmed via `busctl` showing the property's array length as 0,
+  and the tray rendering a solid grey circle, then a broken-image "X",
+  instead of the actual icon.
 
 ## Design decisions that were tried, then deliberately reversed
 

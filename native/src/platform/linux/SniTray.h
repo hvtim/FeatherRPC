@@ -42,15 +42,12 @@ public:
     SniTray(const SniTray&) = delete;
     SniTray& operator=(const SniTray&) = delete;
 
-    // iconName must resolve via the current icon theme (e.g. "featherrpc"
-    // installed into ~/.local/share/icons/hicolor/.../apps/ by
-    // installer/linux/install.sh) - sent to the host as the
-    // StatusNotifierItem "IconName" property and looked up by name, the
-    // same contract AppIndicator/libappindicator used. Chosen over
-    // embedding IconPixmap data because install.sh's icon-theme step
-    // already works and is already verified; see SniTray.cpp for the
-    // full tradeoff writeup.
-    bool Create(const std::string& iconName);
+    // No icon name parameter - the icon is sent as IconPixmap data (see
+    // GetProperty in SniTray.cpp), not looked up by name via IconName,
+    // since a host can't resolve a name against any icon theme when
+    // there was no install step to put it there (a bare AppImage run,
+    // confirmed live: the icon silently fell back to generic).
+    bool Create();
 
     void SetInitialState(const core::AppConfig& config, bool startAtLogin);
 
@@ -177,7 +174,6 @@ private:
     guint menuRegistrationId_ = 0;
     GMainLoop* loop_ = nullptr;
 
-    std::string iconName_;
     std::string statusText_ = "FeatherRPC";
 
     core::AppConfig config_;

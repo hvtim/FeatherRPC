@@ -1,4 +1,5 @@
 #include "SniTray.h"
+#include "AppIcon.h"
 #include "core/Log.h"
 
 #include <gio/gio.h>
@@ -20,10 +21,12 @@ constexpr const char* kMenuInterfaceName = "com.canonical.dbusmenu";
 // Minimal but spec-complete introspection XML for the properties/methods/
 // signals this class actually implements. Optional StatusNotifierItem
 // properties not implemented here (WindowId, AttentionIconName,
-// OverlayIconName, AttentionMovieName, IconPixmap) are genuinely optional
-// per the freedesktop/KDE spec - hosts fall back gracefully when they're
-// absent, the same way they did when AppIndicator/libayatana-appindicator
-// didn't set them either.
+// OverlayIconName, AttentionMovieName) are genuinely optional per the
+// freedesktop/KDE spec - hosts fall back gracefully when they're absent,
+// the same way they did when AppIndicator/libayatana-appindicator didn't
+// set them either. IconPixmap *is* implemented (see GetProperty) - a bare
+// AppImage run has no icon theme to resolve IconName against, so it's no
+// longer just an optional nice-to-have.
 // Custom "XML" raw-string delimiter, not the default R"( )" - several
 // D-Bus type signatures below end with ")" right before the attribute's
 // closing quote (e.g. type="(sa(iiay)ss)"), which would collide with and
@@ -36,6 +39,7 @@ constexpr const char* kSniIntrospectionXml = R"XML(
     <property name="Title" type="s" access="read"/>
     <property name="Status" type="s" access="read"/>
     <property name="IconName" type="s" access="read"/>
+    <property name="IconPixmap" type="a(iiay)" access="read"/>
     <property name="IconThemePath" type="s" access="read"/>
     <property name="ItemIsMenu" type="b" access="read"/>
     <property name="Menu" type="o" access="read"/>
@@ -152,8 +156,7 @@ SniTray::~SniTray() {
     }
 }
 
-bool SniTray::Create(const std::string& iconName) {
-    iconName_ = iconName;
+bool SniTray::Create() {
 
     GError* error = nullptr;
     connection_ = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
@@ -608,9 +611,10 @@ GVariant* SniTray::BuildLayoutVariant(const MenuNode& node) const {
 }
 
 GVariant* SniTray::BuildToolTipVariant() const {
-    // (icon-name, icon-pixmap, title, description) per the SNI spec - no
-    // pixmap data of our own (IconName carries the icon, see the header
-    // comment on Create()), so this array is always empty.
+    // (icon-name, icon-pixmap, title, description) per the SNI spec - the
+    // main icon (IconName/IconPixmap on the item itself, see GetProperty)
+    // already covers every host tested, so the tooltip's own icon fields
+    // are left empty rather than duplicating that data here too.
     GVariantBuilder pixmapBuilder;
     g_variant_builder_init(&pixmapBuilder, G_VARIANT_TYPE("a(iiay)"));
     GVariant* pixmaps = g_variant_builder_end(&pixmapBuilder);
@@ -762,16 +766,38 @@ GVariant* SniTray::GetSniProperty(const std::string& name) {
         return g_variant_new_string("Active");
     }
     if (name == "IconName") {
-        // IconName over IconPixmap: install.sh already installs icon.png
-        // into ~/.local/share/icons/hicolor/256x256/apps/featherrpc.png,
-        // and that path was already working under the old AppIndicator
-        // implementation (which took the same iconName parameter and used
-        // it the same way) - reusing it keeps this change purely about the
-        // D-Bus transport, not the icon delivery mechanism too. The
-        // IconPixmap route (raw ARGB32 bytes, no theme install dependency
-        // at all) was considered and is more self-contained, but more code
-        // for no behavior change on a path that already works.
-        return g_variant_new_string(iconName_.c_str());
+        // Deliberately always empty, not a themed name like "featherrpc" -
+        // confirmed live (Fedora/GNOME Shell 50.2,
+        // appindicatorsupport@rgcjonas.gmail.com) that this extension
+        // tries to resolve a non-empty IconName against the icon theme
+        // first and, on failure, shows a generic icon WITHOUT ever
+        // falling back to IconPixmap below - so a non-empty name here
+        // that can't resolve (any run with no install step, e.g. a bare
+        // AppImage) actively made the icon worse, not just unhelped.
+        // Verified against Tailscale's systray, which shows correctly on
+        // this same host/extension and also sends an empty IconName,
+        // relying on IconPixmap exclusively - same fix, matching a known-
+        // working reference implementation exactly.
+        return g_variant_new_string("");
+    }
+    if (name == "IconPixmap") {
+        // Sending the decoded pixels directly needs no install step and
+        // no icon theme at all - this is what actually shows the icon now
+        // that IconName is unconditionally empty (see above). Baked in at
+        // build time from assets/icon.png (see AppIcon.h) rather than
+        // decoded at runtime, so this adds no new library dependency (no
+        // gdk-pixbuf, no libpng).
+        // g_variant_new_fixed_array already returns a complete "ay" value,
+        // not a single element to feed into a builder for one - wrapping
+        // it in a second GVariantBuilder (an earlier version of this code
+        // did) is a type mismatch that silently produced an empty byte
+        // array instead of the real 16384 bytes, confirmed live via
+        // busctl showing IconPixmap's array length as 0.
+        GVariantBuilder pixmapBuilder;
+        g_variant_builder_init(&pixmapBuilder, G_VARIANT_TYPE("a(iiay)"));
+        GVariant* bytes = g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, kAppIconArgb32, sizeof(kAppIconArgb32), 1);
+        g_variant_builder_add(&pixmapBuilder, "(ii@ay)", kAppIconSize, kAppIconSize, bytes);
+        return g_variant_builder_end(&pixmapBuilder);
     }
     if (name == "IconThemePath") {
         return g_variant_new_string("");

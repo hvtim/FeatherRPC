@@ -127,7 +127,7 @@ int main(int argc, char** argv) {
     platform_linux::DesktopAutoLaunch autoLaunch;
 
     nativeui::SniTray tray;
-    if (!tray.Create("featherrpc")) {
+    if (!tray.Create()) {
         core::Log::Write("[error] Failed to create the tray icon.");
         platform_posix::DaemonRemovePidFile();
         return 1;
