@@ -1,4 +1,5 @@
 #include "SniTray.h"
+#include "AppIcon.h"
 #include "core/Log.h"
 
 #include <gio/gio.h>
@@ -20,10 +21,12 @@ constexpr const char* kMenuInterfaceName = "com.canonical.dbusmenu";
 // Minimal but spec-complete introspection XML for the properties/methods/
 // signals this class actually implements. Optional StatusNotifierItem
 // properties not implemented here (WindowId, AttentionIconName,
-// OverlayIconName, AttentionMovieName, IconPixmap) are genuinely optional
-// per the freedesktop/KDE spec - hosts fall back gracefully when they're
-// absent, the same way they did when AppIndicator/libayatana-appindicator
-// didn't set them either.
+// OverlayIconName, AttentionMovieName) are genuinely optional per the
+// freedesktop/KDE spec - hosts fall back gracefully when they're absent,
+// the same way they did when AppIndicator/libayatana-appindicator didn't
+// set them either. IconPixmap *is* implemented (see GetProperty) - a bare
+// AppImage run has no icon theme to resolve IconName against, so it's no
+// longer just an optional nice-to-have.
 // Custom "XML" raw-string delimiter, not the default R"( )" - several
 // D-Bus type signatures below end with ")" right before the attribute's
 // closing quote (e.g. type="(sa(iiay)ss)"), which would collide with and
@@ -36,6 +39,7 @@ constexpr const char* kSniIntrospectionXml = R"XML(
     <property name="Title" type="s" access="read"/>
     <property name="Status" type="s" access="read"/>
     <property name="IconName" type="s" access="read"/>
+    <property name="IconPixmap" type="a(iiay)" access="read"/>
     <property name="IconThemePath" type="s" access="read"/>
     <property name="ItemIsMenu" type="b" access="read"/>
     <property name="Menu" type="o" access="read"/>
@@ -152,8 +156,7 @@ SniTray::~SniTray() {
     }
 }
 
-bool SniTray::Create(const std::string& iconName) {
-    iconName_ = iconName;
+bool SniTray::Create() {
 
     GError* error = nullptr;
     connection_ = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
@@ -608,9 +611,10 @@ GVariant* SniTray::BuildLayoutVariant(const MenuNode& node) const {
 }
 
 GVariant* SniTray::BuildToolTipVariant() const {
-    // (icon-name, icon-pixmap, title, description) per the SNI spec - no
-    // pixmap data of our own (IconName carries the icon, see the header
-    // comment on Create()), so this array is always empty.
+    // (icon-name, icon-pixmap, title, description) per the SNI spec - the
+    // main icon (IconName/IconPixmap on the item itself, see GetProperty)
+    // already covers every host tested, so the tooltip's own icon fields
+    // are left empty rather than duplicating that data here too.
     GVariantBuilder pixmapBuilder;
     g_variant_builder_init(&pixmapBuilder, G_VARIANT_TYPE("a(iiay)"));
     GVariant* pixmaps = g_variant_builder_end(&pixmapBuilder);
@@ -762,16 +766,38 @@ GVariant* SniTray::GetSniProperty(const std::string& name) {
         return g_variant_new_string("Active");
     }
     if (name == "IconName") {
-        // IconName over IconPixmap: install.sh already installs icon.png
-        // into ~/.local/share/icons/hicolor/256x256/apps/featherrpc.png,
-        // and that path was already working under the old AppIndicator
-        // implementation (which took the same iconName parameter and used
-        // it the same way) - reusing it keeps this change purely about the
-        // D-Bus transport, not the icon delivery mechanism too. The
-        // IconPixmap route (raw ARGB32 bytes, no theme install dependency
-        // at all) was considered and is more self-contained, but more code
-        // for no behavior change on a path that already works.
-        return g_variant_new_string(iconName_.c_str());
+        // Deliberately always empty, not a themed name like "featherrpc" -
+        // confirmed live (Fedora/GNOME Shell 50.2,
+        // appindicatorsupport@rgcjonas.gmail.com) that this extension
+        // tries to resolve a non-empty IconName against the icon theme
+        // first and, on failure, shows a generic icon WITHOUT ever
+        // falling back to IconPixmap below - so a non-empty name here
+        // that can't resolve (any run with no install step, e.g. a bare
+        // AppImage) actively made the icon worse, not just unhelped.
+        // Verified against Tailscale's systray, which shows correctly on
+        // this same host/extension and also sends an empty IconName,
+        // relying on IconPixmap exclusively - same fix, matching a known-
+        // working reference implementation exactly.
+        return g_variant_new_string("");
+    }
+    if (name == "IconPixmap") {
+        // Sending the decoded pixels directly needs no install step and
+        // no icon theme at all - this is what actually shows the icon now
+        // that IconName is unconditionally empty (see above). Baked in at
+        // build time from assets/icon.png (see AppIcon.h) rather than
+        // decoded at runtime, so this adds no new library dependency (no
+        // gdk-pixbuf, no libpng).
+        // g_variant_new_fixed_array already returns a complete "ay" value,
+        // not a single element to feed into a builder for one - wrapping
+        // it in a second GVariantBuilder (an earlier version of this code
+        // did) is a type mismatch that silently produced an empty byte
+        // array instead of the real 16384 bytes, confirmed live via
+        // busctl showing IconPixmap's array length as 0.
+        GVariantBuilder pixmapBuilder;
+        g_variant_builder_init(&pixmapBuilder, G_VARIANT_TYPE("a(iiay)"));
+        GVariant* bytes = g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, kAppIconArgb32, sizeof(kAppIconArgb32), 1);
+        g_variant_builder_add(&pixmapBuilder, "(ii@ay)", kAppIconSize, kAppIconSize, bytes);
+        return g_variant_builder_end(&pixmapBuilder);
     }
     if (name == "IconThemePath") {
         return g_variant_new_string("");
@@ -916,14 +942,62 @@ void SniTray::HandleMenuMethodCall(
         // menu, replacing AppIndicatorTray's old 10-second polling timer
         // (which existed only because GMenuModel-exported menus have no
         // such signal) with an actually-just-in-time refresh.
-        RefreshMediaSourcesAndRebuild();
-        g_dbus_method_invocation_return_value(invocation, g_variant_new("(b)", TRUE));
+        //
+        // The host calls this for EVERY item about to be shown, including
+        // the root and every submenu, not just Media Source - refreshing
+        // unconditionally meant hovering over "Album Art" or "Poll
+        // Interval" also did a synchronous MPRIS D-Bus round-trip first,
+        // adding latency to every submenu open for no reason. GNOME's own
+        // AppIndicator extension is documented as sensitive to exactly
+        // this kind of added delay during menu construction (Tailscale's
+        // systray hit the same class of bug on GNOME, see their #14477).
+        //
+        // Only refresh on the root (id 0) opening, not again when Media
+        // Source's own submenu opens moments later - the root's refresh is
+        // already fresh enough by then (the root has to open first, before
+        // any submenu can be hovered at all), and doing a second
+        // synchronous MPRIS round-trip specifically on Media Source's own
+        // AboutToShow was still enough added latency to reproduce the same
+        // flicker-then-collapse this whole rework is fixing, confirmed live
+        // (Album Art/Poll Interval opened fine once THEY stopped doing any
+        // work here; Media Source still glitched until this refresh moved
+        // to only happen on root-open).
+        //
+        // needUpdate (the bool returned here) should reflect whether
+        // anything actually changed, not be a hardcoded TRUE - a host
+        // that's told "needs update" on every single hover re-fetches
+        // GetLayout and rebuilds its own widget tree every time, which is
+        // exactly what was interacting badly with this extension's
+        // submenu-open animation (confirmed against a report of the same
+        // extension/bug: https://github.com/ubuntu/gnome-shell-extension-appindicator/issues/93 -
+        // "AboutToShow function should return false" unless something
+        // genuinely changed).
+        gint32 id = 0;
+        g_variant_get(parameters, "(i)", &id);
+        bool refreshed = false;
+        if (id == 0) {
+            RefreshMediaSourcesAndRebuild();
+            refreshed = true;
+        }
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(b)", refreshed));
         return;
     }
 
     if (methodName == "AboutToShowGroup") {
-        RefreshMediaSourcesAndRebuild();
         GVariant* idsV = g_variant_get_child_value(parameters, 0);
+        GVariantIter idsIter;
+        g_variant_iter_init(&idsIter, idsV);
+        gint32 groupId = 0;
+        bool needsRefresh = false;
+        while (g_variant_iter_next(&idsIter, "i", &groupId)) {
+            if (groupId == 0) {
+                needsRefresh = true;
+                break;
+            }
+        }
+        if (needsRefresh) {
+            RefreshMediaSourcesAndRebuild();
+        }
         GVariantBuilder errBuilder;
         g_variant_builder_init(&errBuilder, G_VARIANT_TYPE("ai"));
         g_dbus_method_invocation_return_value(
