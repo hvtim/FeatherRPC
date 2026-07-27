@@ -263,7 +263,7 @@ else()
     # featherrpc - the thin CLI control tool. Named "featherrpc", not
     # "featherrpc-cli" like Windows/macOS - Linux filesystems are
     # case-sensitive, so this doesn't collide with the "FeatherRPC" tray/
-    # daemon binary above the way it would on Windows (see KNOWN_ISSUES.md's
+    # daemon binary above the way it would on Windows (see docs/KnownIssues.md's
     # "case-insensitive filename collision" entry for why Windows/macOS keep
     # the "-cli" suffix and must not drop it). No gio-2.0/GTK link at all
     # (this is the concrete way the headless daemon path stays free of the
