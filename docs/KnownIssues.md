@@ -1,10 +1,11 @@
 # Known Issues, Quirks, and Technical Debt
 
-A record of this project's state as of the last commit under the
-iTunes-RPC name, before rebranding to FeatherRPC. Preserved so nothing
-learned during development gets silently lost in the rename. Items here
-are a mix of open limitations, fixed-but-noteworthy bugs, and technical
-debt - none of it is glossed over.
+Started as a record of this project's state at the moment it rebranded
+from iTunes-RPC to FeatherRPC, so nothing learned during development got
+silently lost in the rename. Kept up to date since - items here are a mix
+of open limitations, fixed-but-noteworthy bugs, and technical debt across
+the whole project's history, not just the rebrand snapshot. None of it is
+glossed over.
 
 ## Open, unresolved as of this writing
 
@@ -20,23 +21,43 @@ debt - none of it is glossed over.
   script) is the same story - written against documented `hdiutil`/
   `osascript` behavior, never run. Treat all of it as "believed correct,"
   not "verified."
-- **No app icon anywhere in the repo.** `assets/icon.png` (512x512) exists,
-  but nobody has run `iconutil` to build an `.iconset`/`.icns` from it, and
+- **macOS: no `.icns` app icon.** `assets/icon.png` (512x512) exists, but
+  nobody has run `iconutil` to build an `.iconset`/`.icns` from it, and
   `native/src/platform/macos/Info.plist.in` has no `CFBundleIconFile` key.
   The shipped `.app` shows the generic macOS document icon - in Finder, the
   Dock, and the `.dmg` window itself - until this is done on Mac hardware.
-- **Linux tray rendering: confirmed on one real desktop, not the other two.**
-  KDE Plasma 6 on CachyOS is now confirmed working end-to-end (tray icon
-  renders, menu opens, the SNI/dbusmenu rewrite talks to the real
-  `org.kde.StatusNotifierItem` host) - that live test is what surfaced the
-  CLI-reload gap fixed elsewhere in this file. The other two legs of the
-  original 3-configuration matrix (vanilla GNOME/Wayland with no extension,
-  GNOME with the AppIndicator extension) remain unwalked; everything for
-  those two is still WSL-only compile/link verification, no display server.
+  Linux doesn't have this gap: `native/src/platform/linux/AppIcon.h` bakes
+  the same source PNG in as raw pixel data for the tray icon (see the
+  IconPixmap entry below) - a different mechanism for a different purpose
+  (a tray icon, not an app bundle icon), so it doesn't carry over to fix
+  this macOS gap.
+- **Linux tray rendering: confirmed on two of three desktop configurations.**
+  KDE Plasma 6 (CachyOS) and GNOME Shell 50.2 with the
+  `appindicatorsupport@rgcjonas.gmail.com` extension (Fedora) are both
+  confirmed working end-to-end - tray icon renders, menu opens, submenus
+  work correctly. Verified via `install.sh`-equivalent installs and an
+  AppImage built via `packaging/appimage/` on both real desktops; the
+  GNOME live test in particular surfaced two real bugs (submenu hover/
+  glitch, icon placeholder - both documented below) that never showed up
+  on KDE. The AUR/COPR packages are only build-and-CLI-verified so far
+  (`rpmbuild`/`dnf` in a WSL Fedora environment, no display server) - not
+  yet visually confirmed on a real desktop, though they carry the exact
+  same tray code as the paths that are. The one remaining desktop
+  configuration, vanilla GNOME/Wayland with no AppIndicator extension at
+  all, is still unwalked - though per the deliberate scope limit below,
+  the expected behavior there (no tray icon, a clear log message, Discord
+  updates continue regardless) is simple enough that there's little left
+  to verify beyond the message itself actually appearing.
 - **Windows ARM64 has never run on ARM64 hardware.** It cross-compiles
   cleanly and the resulting binary's PE header machine type is confirmed
   `IMAGE_FILE_MACHINE_ARM64` (0xAA64), but COM/iTunes automation and
   C++/WinRT SMTC access have never been exercised on an ARM64 device.
+- **Linux distro packaging exists but isn't published anywhere yet.** AUR
+  and Fedora COPR packaging (`packaging/aur/`, `packaging/copr/`) are both
+  build-verified locally, and the AppImage build
+  (`packaging/appimage/`) is fully verified live on two real desktops -
+  none are actually submitted/published to their respective channels yet.
+  See [packaging/README.md](../packaging/README.md) for current status.
 
 ### Deliberate scope limits (not bugs)
 
@@ -89,11 +110,6 @@ debt - none of it is glossed over.
 
 ### Flagged-but-unresolved risk (low confidence either way, never tested)
 
-- **Linux**: the tray menu rebuilds on every "show" event, sourced from
-  live-refreshed MPRIS enumeration. A parallel effort flagged a theoretical
-  risk that a rebuild landing while the menu is actively open could cause a
-  visible flicker - never observed, since nobody's watched it render
-  outside WSL.
 - **macOS**: `StatusItemTray`'s `dispatch_async`-based status-update
   callback could in theory fire after the tray object is destroyed during
   shutdown, a use-after-free. Low risk, flagged, not fixed - moot until this
@@ -212,6 +228,74 @@ debt - none of it is glossed over.
   `sudo systemctl restart featherrpc` (wrong scope *and* wrong name) against
   the old name produced a confusing "unit not found" during the same test
   session.
+- **No guard against two instances running at once, on any platform.**
+  Nothing stopped tray+tray, headless+headless, or tray+headless from all
+  running simultaneously, regardless of what launched the second one.
+  Reproduced live on Linux: enabling autostart while a tray instance was
+  already running spawned a second, independent headless instance, which
+  briefly overwrote the shared pidfile and then deleted it entirely on its
+  own clean shutdown - orphaning the still-running tray with no
+  discoverable identity (`featherrpc status` reported "Not running" while
+  it was genuinely running). Fixed with a dedicated single-instance lock
+  on all three platforms (`flock()` on POSIX, a named mutex on Windows),
+  acquired first thing in `main()` before touching config/engine/tray.
+  Deliberately a separate mechanism from the pidfile/named-Events
+  `RequestReload`/`RequestQuit` use - holding it in tray mode can't cause
+  a CLI command to send a real signal into a tray process that isn't set
+  up to handle it as anything other than "terminate" (true on macOS/
+  Windows tray mode, which has never listened for reload/quit signals).
+- **Fixing the guard above surfaced a systemd restart-loop.** Once the
+  guard refused a second launch, systemd's `Restart=on-failure` treated
+  that refusal as a crash and kept respawning the unit in a tight loop for
+  as long as the other instance held the lock. Fixed by having the guard
+  exit with a distinct code (75) and adding
+  `RestartPreventExitStatus=75` to `featherrpc.service`, so systemd can
+  tell an intentional refusal apart from an actual crash. Reproduced and
+  confirmed fixed live (`systemctl --user status` showed "restart counter"
+  climbing before the fix, a single clean "failed" state after).
+- **Linux `daemon start`/`daemon restart` silently did nothing under a real
+  install.** `AppExePath()` assumed the CLI tool and the main binary live
+  in the same directory - false for `install.sh`'s actual layout (the app
+  goes to `~/.local/share/FeatherRPC`, the CLI to `~/.local/bin` so it's on
+  `$PATH`). The forked child's `execl()` failed silently before ever
+  logging anything, so `daemon start` printed a misleading "Started, but
+  not confirmed running yet." with nothing actually running. Fixed by
+  checking `/usr/bin` and `/usr/local/bin` (for distro packages) before
+  falling back to the per-user layout. Verified live both ways: a binary
+  placed at `/usr/bin/FeatherRPC` is used; with nothing there, it falls
+  back correctly.
+- **`daemon start` also reported success when the guard above refused to
+  spawn, on Windows/macOS specifically.** Windows/macOS tray mode has
+  never registered itself for `IsRunning()` - only headless mode does - so
+  `daemon start` had no way to tell a refused spawn (the new guard kicking
+  in) apart from one that just hadn't confirmed yet, and reported the
+  latter either way. Fixed by having `SpawnDaemon()` wait briefly after
+  spawning and treat an early exit as a failed spawn - a healthy headless
+  instance never exits on its own within a fraction of a second. Confirmed
+  live on Windows: now reports "Failed to start." instead.
+- **AppImage: bundling any of Fedora 44's system libraries crashed on
+  dynamic-linker init, not just the ones that seemed obviously unsafe to
+  bundle.** First attempt excluded the usual suspects
+  (`libudev`/`libsystemd`/`libselinux`/`libmount`/`libblkid` - system-
+  integration libraries that assume they're running as part of the actual
+  system) after a `gdb` backtrace showed a segfault inside `libudev`'s ELF
+  constructor. That fixed `libudev` specifically, but the same crash
+  immediately reappeared inside a different bundled library
+  (`libcbor`, curl's FIDO2/WebAuthn support - never exercised by anything
+  this app does), and again inside `libcrypto` (OpenSSL, which *is*
+  actually used, so excluding it isn't an option) after excluding a much
+  longer list of curl's optional-protocol dependencies. This pointed at a
+  more systemic incompatibility - not a specific-library problem, but bare
+  incompatibility between this Fedora build's RELR-packed relocations
+  (`-z pack-relative-relocs`, a newer linker feature) and loading *any* of
+  its system libraries from a relocated AppImage path. Resolved by
+  excluding every bundled library (`--exclude-library='*'`) and relying on
+  the target system's own copies for all of them - our actual runtime
+  dependencies (glib2/dbus/curl) are near-universal on desktop Linux
+  already, so this isn't the portability loss it would have been with the
+  old GTK/appindicator dependency footprint. Confirmed live: headless mode
+  ran successfully with literally nothing bundled, after every partial
+  exclude-list attempt still crashed somewhere.
 - **Linux: tray submenus needed a click instead of opening on hover, then
   visibly glitched (flicker, then collapse) even on click.** Found live on
   a real Fedora/GNOME Shell 50.2 desktop, running the
