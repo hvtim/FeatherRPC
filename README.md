@@ -20,22 +20,44 @@ for what's verified on each platform before relying on this.
 
 ## Install
 
+Create a Discord application at
+[discord.com/developers/applications](https://discord.com/developers/applications)
+and copy the Application ID - you'll enter it from the tray menu after
+installing, on any platform.
+
 ### Windows
 
-1. Create a Discord application at
-   [discord.com/developers/applications](https://discord.com/developers/applications)
-   and copy the Application ID.
-2. Download the Windows zip from the
+1. Download the Windows zip from the
    [latest release](../../releases/latest) and extract it.
-3. Run `install.bat`. Right-click the tray icon afterward to enter the
+2. Run `install.bat`. Right-click the tray icon afterward to enter the
    Application ID.
 
 Installs to `%LOCALAPPDATA%\FeatherRPC`.
 
-### Linux / macOS
+### Linux
 
-See [installer/linux](installer/linux) / [installer/macos](installer/macos).
-macOS has no prebuilt binary yet - see [docs/Building.md](docs/Building.md).
+Two options:
+
+- **AppImage** - no install step, no dependencies beyond what most
+  desktops already have (`glib2`, `dbus`, `curl`).
+  1. Download `FeatherRPC-*.AppImage` from the
+     [latest release](../../releases/latest).
+  2. `chmod +x FeatherRPC-*.AppImage`
+  3. Run it: `./FeatherRPC-*.AppImage`.
+- **install.sh** - installs to `~/.local/share/FeatherRPC`, sets up
+  autostart, and puts the `featherrpc` CLI on `$PATH`.
+  1. Download the Linux zip from the
+     [latest release](../../releases/latest) and extract it.
+  2. `chmod +x install.sh uninstall.sh`
+  3. `./install.sh`
+
+Either way, right-click the tray icon afterward to enter the Application
+ID.
+
+### macOS
+
+No prebuilt binary yet - see [docs/Building.md](docs/Building.md) to
+build from source.
 
 ## Tray menu
 
