@@ -70,15 +70,19 @@ a positive number.
 List the media sources currently available to pick from, get the
 currently selected one, or set it.
 
-- `list` prints each source's id and display name, one per line. Not
-  available on macOS - Music.app is the only source there, nothing to
-  list.
+- `list` prints each source's id and display name, one per line.
 - Windows: `id` is `iTunes` (COM automation) or an SMTC app user model id
   (e.g. `vlc.exe`) for any other app reporting now-playing info to
   Windows.
 - Linux: `id` is an MPRIS bus name (e.g.
   `org.mpris.MediaPlayer2.plasma-browser-integration`).
-- macOS: fixed to Music.app; there's nothing else to point `set` at yet.
+- macOS: `list` always prints exactly two fixed entries - `Music`
+  (Music.app via Scripting Bridge) and `MediaRemote` (any other app, via
+  an unofficial workaround for Apple's macOS 15.4+ MediaRemote entitlement
+  lockdown - see [KnownIssues.md](KnownIssues.md)). Unlike Windows/Linux,
+  there's no live enumeration of individual apps; `MediaRemote` always
+  tracks whatever macOS itself currently considers the active Now Playing
+  session, Spotify excluded.
 
 ### `tray get` / `tray on` / `tray off`
 

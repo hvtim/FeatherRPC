@@ -5,6 +5,7 @@
 
 #include "AppleSearchAlbumArtLookup.h"
 #include "LaunchAgentAutoLaunch.h"
+#include "MediaRemoteSource.h"
 #include "MusicMediaSource.h"
 #include "StatusItemTray.h"
 #include "TextPrompt.h"
@@ -16,6 +17,21 @@
 
 #include <memory>
 #include <string>
+
+namespace {
+
+// "Music" (or the shared cross-platform default "iTunes", or empty) all
+// mean Music.app via Scripting Bridge - same reserved-literal pattern
+// Linux uses for its own "iTunes" sentinel. Only "MediaRemote" opts into
+// the any-app source.
+std::unique_ptr<core::MediaSource> MakeMediaSource(const std::string& id) {
+    if (id == "MediaRemote") {
+        return std::make_unique<platform_macos::MediaRemoteSource>();
+    }
+    return std::make_unique<platform_macos::MusicMediaSource>();
+}
+
+} // namespace
 
 int main(int argc, const char** argv) {
     bool noTray = false;
@@ -44,14 +60,29 @@ int main(int argc, const char** argv) {
         }
 
         core::AppConfig config = core::LoadConfig(core::GetConfigFilePath());
+        std::string currentMediaSourceId = config.mediaSource;
 
         platform_macos::LaunchAgentAutoLaunch autoLaunch;
 
         core::PresenceEngine engine(
             config,
-            std::make_unique<platform_macos::MusicMediaSource>(),
+            MakeMediaSource(currentMediaSourceId),
             std::make_unique<platform_macos::AppleSearchAlbumArtLookup>(),
             [] { return std::make_unique<platform_posix::UnixSocketIpcTransport>(); });
+
+        // Shared by both the tray's OnConfigChanged and the headless
+        // reload loop below - identical either way.
+        auto applyConfig = [&](const core::AppConfig& newConfig) {
+            core::SaveConfig(newConfig, core::GetConfigFilePath());
+
+            std::unique_ptr<core::MediaSource> newMediaSource;
+            if (newConfig.mediaSource != currentMediaSourceId) {
+                currentMediaSourceId = newConfig.mediaSource;
+                newMediaSource = MakeMediaSource(currentMediaSourceId);
+            }
+
+            engine.UpdateConfig(newConfig, std::move(newMediaSource));
+        };
 
         if (noTray) {
             // No NSApplication/StatusItemTray at all in this path - the
@@ -70,10 +101,8 @@ int main(int argc, const char** argv) {
             for (;;) {
                 auto signal = platform_posix::DaemonWaitForSignal();
                 if (signal == platform_posix::DaemonSignalKind::Reload) {
-                    // Media source never changes in this phase - Music.app
-                    // only - same as the tray path's OnConfigChanged.
                     core::AppConfig reloaded = core::LoadConfig(core::GetConfigFilePath());
-                    engine.UpdateConfig(reloaded, nullptr);
+                    applyConfig(reloaded);
                     core::Log::Write("Reloaded config.");
                 } else {
                     break;
@@ -103,9 +132,7 @@ int main(int argc, const char** argv) {
                 core::Log::Write("Tray icon preference changed - takes effect next launch.");
             }
             config = newConfig;
-            core::SaveConfig(newConfig, core::GetConfigFilePath());
-            // Media source never changes in this phase - Music.app only.
-            engine.UpdateConfig(newConfig, nullptr);
+            applyConfig(newConfig);
         };
 
         tray.OnStartAtLoginChanged = [&](bool enabled) {

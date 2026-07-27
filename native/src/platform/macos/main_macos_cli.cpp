@@ -6,6 +6,7 @@
 #include "cli/CliHooks.h"
 
 #include "LaunchAgentAutoLaunch.h"
+#include "MediaRemoteSource.h"
 #include "platform/posix/DaemonSignal.h"
 
 #include <sys/wait.h>
@@ -70,9 +71,10 @@ int main(int argc, char** argv) {
     cli::Hooks hooks;
     hooks.autoLaunch = std::make_unique<platform_macos::LaunchAgentAutoLaunch>(InstalledAppExePath());
     hooks.daemonSignal = std::make_unique<platform_posix::PosixDaemonSignal>();
-    // Music.app is the only source in this phase (see the plan's Phase 3
-    // scope note) - nothing to enumerate, unlike Windows/Linux.
-    hooks.listMediaSources = nullptr;
+    // Fixed 2-entry list (Music.app, plus the MediaRemote-adapter-backed
+    // "any app" source) - see MediaRemoteSource.h for why there's nothing
+    // to dynamically enumerate here, unlike Windows/Linux.
+    hooks.listMediaSources = [] { return platform_macos::MediaRemoteSource::GetAvailableSources(); };
     hooks.spawnDaemon = SpawnDaemon;
 
     return cli::Run(args, hooks);

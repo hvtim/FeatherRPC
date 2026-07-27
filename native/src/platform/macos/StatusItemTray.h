@@ -1,10 +1,12 @@
 #pragma once
 
 #include "core/AppConfig.h"
+#include "core/MediaSource.h"
 
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace nativeui {
 
@@ -53,6 +55,7 @@ private:
 
     core::AppConfig _config;
     bool _startAtLogin = false;
+    std::vector<core::MediaSourceInfo> _mediaSources;
 
     void RebuildMenu();
     void NotifyConfigChanged();

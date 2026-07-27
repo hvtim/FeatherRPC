@@ -25,6 +25,15 @@ instead of a batch script and PowerShell prompts. See
   Studio's releases use).
 - Discord Application ID setup moved out of the README's Install section
   into its own OS-agnostic Usage section - it isn't an install step.
+- macOS gains a second, additional media source: "Now Playing (any app)",
+  alongside the existing Music.app (Scripting Bridge) source - selectable
+  from the tray's Media Source submenu or `featherrpc-cli mediasource set
+  MediaRemote`. Works around Apple's macOS 15.4+ `MediaRemote.framework`
+  entitlement lockdown via the vendored
+  [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter)
+  project; Spotify excluded, same as every other platform. Unverified on
+  real Mac hardware, like the rest of the macOS port - see
+  [docs/KnownIssues.md](docs/KnownIssues.md).
 
 ## [0.1.1] - 2026-07-27
 
