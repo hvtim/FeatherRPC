@@ -61,9 +61,27 @@ bool StatusItemTray::Create() {
     _impl->target.tray = this;
 
     _impl->statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
-    // Placeholder glyph - swap for the real icon.icns asset once the .app
-    // bundle's Resources are wired up (statusItem.button.image, not .title).
-    _impl->statusItem.button.title = @"\U0001F3B5";
+
+    // A text title (previously a placeholder emoji glyph) doesn't reliably
+    // render in the menu bar - confirmed live on real hardware: the status
+    // item occupied space and its dropdown worked, but the glyph itself
+    // never appeared. Cocoa menu bar icons are meant to be images, not
+    // text, so use the app's own icon.png (bundled into Resources - see
+    // CMakeLists.txt) directly instead. Not a template image - this is a
+    // full-color logo, same as how the Linux tray icon renders in color.
+    NSString* iconPath = [[NSBundle mainBundle] pathForResource:@"icon" ofType:@"png"];
+    NSImage* icon = iconPath ? [[NSImage alloc] initWithContentsOfFile:iconPath] : nil;
+    if (icon) {
+        icon.size = NSMakeSize(18, 18);
+        // Dot-syntax (icon.template) doesn't compile here - `template` is
+        // a reserved word in C++, and this file is Objective-C++.
+        [icon setTemplate:NO];
+        _impl->statusItem.button.image = icon;
+    } else {
+        // Fall back to the old placeholder rather than an empty status
+        // item if the icon resource is somehow missing.
+        _impl->statusItem.button.title = @"\U0001F3B5";
+    }
     _impl->statusItem.button.toolTip = @"FeatherRPC";
 
     RebuildMenu();

@@ -198,6 +198,9 @@ elseif(APPLE)
         COMMAND ${CMAKE_COMMAND} -E make_directory
             "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/mediaremote-adapter"
         COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_SOURCE_DIR}/../assets/icon.png"
+            "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/icon.png"
+        COMMAND ${CMAKE_COMMAND} -E copy
             "${mediaremote_adapter_SOURCE_DIR}/bin/mediaremote-adapter.pl"
             "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/mediaremote-adapter/mediaremote-adapter.pl"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
