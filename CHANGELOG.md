@@ -11,6 +11,15 @@ SemVer starting at 0.1.0.
 
 ## [Unreleased]
 
+Windows now ships a real installer (`FeatherRPC-Setup-x64.exe`/`-arm64.exe`,
+built with NSIS) alongside the existing zip - same per-user install under
+`%LOCALAPPDATA%\FeatherRPC`, Start Menu shortcut, optional autostart/desktop
+shortcut, and Add/Remove Programs entry, behind a normal installer wizard
+instead of a batch script and PowerShell prompts. See
+[installer/windows/installer.nsi](installer/windows/installer.nsi).
+
+## [0.1.1] - 2026-07-27
+
 Linux tray rewritten to talk to `org.kde.StatusNotifierItem`/
 `com.canonical.dbusmenu` directly over D-Bus, dropping
 `libayatana-appindicator-glib` entirely (it wasn't reliably packaged -
