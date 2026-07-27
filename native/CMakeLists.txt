@@ -209,6 +209,14 @@ elseif(APPLE)
         COMMAND ${CMAKE_COMMAND} -E copy
             "$<TARGET_FILE:MediaRemoteAdapterTestClient>"
             "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/mediaremote-adapter/MediaRemoteAdapterTestClient"
+        # CFBundleIconFile (Info.plist.in) points at this - iconutil/sips
+        # are macOS-only, so this regenerates from the source PNG on every
+        # macOS build rather than shipping a pre-generated binary .icns
+        # that'd only be updatable by whoever next has Mac hardware handy.
+        COMMAND bash
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/make-icon.sh"
+            "${CMAKE_SOURCE_DIR}/../assets/icon.png"
+            "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/icon.icns"
         COMMENT "Bundling mediaremote-adapter into FeatherRPC.app"
     )
 

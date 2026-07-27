@@ -16,6 +16,8 @@
     <string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>icon</string>
     <!-- No LSUIElement here on purpose: the tray sets NSApplicationActivationPolicyAccessory
          itself at runtime (main.mm), which covers the same "no Dock icon" behavior without
          hardcoding it into the bundle - keeps main.mm the single source of truth for UI policy. -->
