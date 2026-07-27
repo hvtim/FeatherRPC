@@ -24,16 +24,6 @@ glossed over.
   Playing (any app)" source, see the scope-limit entry below) - the
   `FetchContent`-built adapter has never actually been built or run on a
   real Mac either.
-- **macOS: no `.icns` app icon.** `assets/icon.png` (512x512) exists, but
-  nobody has run `iconutil` to build an `.iconset`/`.icns` from it, and
-  `native/src/platform/macos/Info.plist.in` has no `CFBundleIconFile` key.
-  The shipped `.app` shows the generic macOS document icon - in Finder, the
-  Dock, and the `.dmg` window itself - until this is done on Mac hardware.
-  Linux doesn't have this gap: `native/src/platform/linux/AppIcon.h` bakes
-  the same source PNG in as raw pixel data for the tray icon (see the
-  IconPixmap entry below) - a different mechanism for a different purpose
-  (a tray icon, not an app bundle icon), so it doesn't carry over to fix
-  this macOS gap.
 - **Linux tray rendering: confirmed on two of three desktop configurations.**
   KDE Plasma 6 (CachyOS) and GNOME Shell 50.2 with the
   `appindicatorsupport@rgcjonas.gmail.com` extension (Fedora) are both
@@ -135,6 +125,29 @@ glossed over.
 
 ## Fixed, but worth knowing about (bugs hit during development)
 
+- **macOS: no `.icns` app icon.** `native/src/platform/macos/make-icon.sh`
+  now generates one from `assets/icon.png` via `iconutil`/`sips` at build
+  time (regenerated on every macOS build, not a checked-in binary), and
+  `Info.plist.in` points `CFBundleIconFile` at it. Confirmed live: valid
+  `ic12`-type `.icns`, correctly bundled - Finder/Dock/`.dmg` windows show
+  the real icon now instead of the generic document icon. This is a
+  separate mechanism from the Linux tray icon (`AppIcon.h`'s raw pixel
+  data) and the macOS tray icon fix below - three different places the
+  same source PNG needed to end up, fixed independently.
+- **macOS: tray icon didn't render in the menu bar.** `StatusItemTray`
+  set the status item's title to a placeholder emoji glyph rather than a
+  real image - confirmed live that this doesn't reliably render as text
+  in the menu bar at all (the status item occupied space and its dropdown
+  worked, but the glyph itself never appeared). Fixed by loading
+  `assets/icon.png` (bundled into `Resources/icon.png`) as a real
+  `NSImage` and setting it via `statusItem.button.image` instead.
+- **macOS: `MusicApplication.h` didn't compile on a real SDK.**
+  `SBObject`/`SBApplicationProtocol` aren't protocols in the current
+  ScriptingBridge.framework (confirmed by grepping the real headers on
+  macOS 15.7) - `SBObject`/`SBApplication` are plain classes. Conforms to
+  `<NSObject>` instead now, matching Clang's own suggested fix; no
+  behavior change, since the code only ever used the protocol's own
+  declared properties.
 - **iTunes' "scripting interface in use" quit warning.** Caused by holding a
   persistent COM connection to iTunes. Fixed (commit `1d892d8`, briefly
   reverted, then reapplied) by creating and releasing the COM object on
