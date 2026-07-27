@@ -1,0 +1,13 @@
+post_install() {
+	systemctl --user daemon-reload 2>/dev/null || true
+	echo "Right-click the tray icon (or run 'featherrpc' for the CLI) to get started."
+	echo "For headless mode: 'featherrpc autostart on', or 'systemctl --user enable --now featherrpc'."
+}
+
+post_upgrade() {
+	post_install
+}
+
+post_remove() {
+	systemctl --user daemon-reload 2>/dev/null || true
+}
