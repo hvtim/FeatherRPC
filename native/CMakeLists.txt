@@ -4,6 +4,8 @@ project(FeatherRPCNative LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(FetchContent)
+
 if(WIN32)
     enable_language(RC)
 
@@ -120,6 +122,18 @@ elseif(APPLE)
 
     enable_language(OBJCXX)
 
+    # MediaRemoteSource shells out to a bundled Perl script + helper
+    # framework (see MediaRemoteSource.h for why - Apple locked the
+    # MediaRemote.framework API itself behind an Apple-only entitlement in
+    # macOS 15.4) instead of linking against anything here. Pinned to a
+    # release tag, not `main` - upstream's own README says the CLI/JSON
+    # shape may still change across minor versions.
+    FetchContent_Declare(mediaremote_adapter
+        GIT_REPOSITORY https://github.com/ungive/mediaremote-adapter
+        GIT_TAG v0.7.6
+    )
+    FetchContent_MakeAvailable(mediaremote_adapter)
+
     add_executable(featherrpc-native MACOSX_BUNDLE
         src/platform/macos/main.mm
 
@@ -132,11 +146,13 @@ elseif(APPLE)
         # cli/ - portable status-file writer (also used headless, see --no-tray)
         src/cli/StatusFile.cpp
 
-        # platform/macos/ - Scripting Bridge Music.app monitor, LaunchAgent
-        # autorun, NSStatusItem/NSMenu tray, NSAlert text-prompt dialog
+        # platform/macos/ - Scripting Bridge Music.app monitor, MediaRemote-
+        # adapter-backed "any app" monitor, LaunchAgent autorun,
+        # NSStatusItem/NSMenu tray, NSAlert text-prompt dialog
         src/platform/macos/ConfigPaths.cpp
         src/platform/macos/LaunchAgentAutoLaunch.cpp
         src/platform/macos/MusicMediaSource.mm
+        src/platform/macos/MediaRemoteSource.mm
         src/platform/macos/AppleSearchAlbumArtLookup.mm
         src/platform/macos/StatusItemTray.mm
         src/platform/macos/TextPrompt.mm
@@ -169,32 +185,73 @@ elseif(APPLE)
     set_target_properties(featherrpc-native PROPERTIES
         OUTPUT_NAME "FeatherRPC"
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/Info.plist.in"
-        MACOSX_BUNDLE_BUNDLE_VERSION "0.1.0"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION "0.1.2"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.2"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.hvtim.featherrpc"
     )
 
-    # featherrpc-cli - the thin CLI control tool. Plain C++, not Objective-
-    # C++ - it never touches Cocoa, so it doesn't need ARC/the Cocoa
-    # frameworks, and it's a plain command-line tool, not a .app bundle
-    # (no MACOSX_BUNDLE here, unlike the target above) - it needs to run
-    # from a terminal and return exit codes normally.
+    # MediaRemoteSource resolves these at runtime via [[NSBundle mainBundle]
+    # resourcePath] - see MediaRemoteSource.mm. The adapter's own CMake
+    # project ad-hoc-signs MediaRemoteAdapter.framework as its own
+    # POST_BUILD step already, so nothing extra is needed here for that.
+    add_custom_command(TARGET featherrpc-native POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/mediaremote-adapter"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_SOURCE_DIR}/../assets/icon.png"
+            "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/icon.png"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${mediaremote_adapter_SOURCE_DIR}/bin/mediaremote-adapter.pl"
+            "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/mediaremote-adapter/mediaremote-adapter.pl"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "$<TARGET_BUNDLE_DIR:MediaRemoteAdapter>"
+            "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/mediaremote-adapter/MediaRemoteAdapter.framework"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "$<TARGET_FILE:MediaRemoteAdapterTestClient>"
+            "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/mediaremote-adapter/MediaRemoteAdapterTestClient"
+        # CFBundleIconFile (Info.plist.in) points at this - iconutil/sips
+        # are macOS-only, so this regenerates from the source PNG on every
+        # macOS build rather than shipping a pre-generated binary .icns
+        # that'd only be updatable by whoever next has Mac hardware handy.
+        COMMAND bash
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/make-icon.sh"
+            "${CMAKE_SOURCE_DIR}/../assets/icon.png"
+            "$<TARGET_BUNDLE_CONTENT_DIR:featherrpc-native>/Resources/icon.icns"
+        COMMENT "Bundling mediaremote-adapter into FeatherRPC.app"
+    )
+
+    # featherrpc-cli - the thin CLI control tool. Plain command-line tool,
+    # not a .app bundle (no MACOSX_BUNDLE here, unlike the target above) -
+    # it needs to run from a terminal and return exit codes normally. It
+    # still needs MediaRemoteSource.mm (for `mediasource list`'s fixed
+    # 2-entry lookup, same as Windows/Linux's CLI targets already
+    # compiling their own SmtcMediaSource.cpp/MprisMediaSource.cpp), so
+    # it's not entirely Cocoa-free like it used to be - just Foundation,
+    # not the AppKit/ScriptingBridge the GUI target needs.
     add_executable(featherrpc-cli
         src/platform/macos/main_macos_cli.cpp
 
         src/core/AppConfig.cpp
+        src/core/Log.cpp # MediaRemoteSource.mm's self-test warning needs this to link
 
         src/cli/CliDispatch.cpp
         src/cli/StatusFile.cpp
 
         src/platform/macos/ConfigPaths.cpp
         src/platform/macos/LaunchAgentAutoLaunch.cpp
+        src/platform/macos/MediaRemoteSource.mm
         src/platform/posix/DaemonSignal.cpp
     )
 
     target_include_directories(featherrpc-cli PRIVATE
         src
         ${CMAKE_SOURCE_DIR}/third_party
+    )
+
+    target_compile_options(featherrpc-cli PRIVATE -fobjc-arc)
+
+    target_link_libraries(featherrpc-cli PRIVATE
+        "-framework Foundation"
     )
 
 else()

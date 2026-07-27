@@ -22,8 +22,12 @@ struct AppConfig {
     std::string artMode = "Auto";
     std::string customArtUrl;
 
-    // "iTunes" (COM automation), or an SMTC app user model id (e.g.
-    // "vlc.exe") for any other app reporting now-playing info to Windows.
+    // Windows: "iTunes" (COM automation), or an SMTC app user model id
+    // (e.g. "vlc.exe") for any other app. Linux: an MPRIS bus name (e.g.
+    // "org.mpris.MediaPlayer2.vlc"), or empty/"iTunes" for "nothing
+    // selected yet". macOS: "Music" (or empty/"iTunes", Scripting
+    // Bridge) or "MediaRemote" (any app, via the MediaRemote-adapter
+    // workaround - see platform/macos/MediaRemoteSource.h).
     std::string mediaSource = "iTunes";
 
     // Whether this app instance should create a tray icon. Cannot be
