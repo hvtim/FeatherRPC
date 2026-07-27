@@ -1,0 +1,32 @@
+# Maintainer: hvtim
+pkgname=featherrpc
+pkgver=0.1.1
+pkgrel=1
+pkgdesc="Syncs now-playing media to Discord as a Rich Presence status"
+arch=('x86_64')
+url="https://github.com/hvtim/FeatherRPC"
+license=('MIT')
+depends=('glib2' 'dbus' 'curl')
+makedepends=('cmake' 'gcc')
+install=featherrpc.install
+source=("$pkgname-$pkgver.tar.gz::https://github.com/hvtim/FeatherRPC/archive/refs/tags/v$pkgver.tar.gz"
+        "featherrpc.desktop")
+sha256sums=('SKIP'
+            'SKIP')
+
+build() {
+  cd "FeatherRPC-$pkgver/native"
+  cmake -B build -DCMAKE_BUILD_TYPE=Release
+  cmake --build build
+}
+
+package() {
+  cd "FeatherRPC-$pkgver"
+
+  install -Dm755 native/build/FeatherRPC "$pkgdir/usr/bin/FeatherRPC"
+  install -Dm755 native/build/featherrpc "$pkgdir/usr/bin/featherrpc"
+  install -Dm644 assets/icon.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/featherrpc.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 installer/linux/featherrpc.service "$pkgdir/usr/lib/systemd/user/featherrpc.service"
+  install -Dm644 "$srcdir/featherrpc.desktop" "$pkgdir/usr/share/applications/featherrpc.desktop"
+}
