@@ -133,9 +133,11 @@ int main(int argc, const char** argv) {
         // default-constructed AppConfig rather than a hardcoded literal so
         // this doesn't become a third copy of the placeholder string (see
         // AppConfig.h and PresenceEngine.cpp's kPlaceholderClientId).
-        // Matches the Windows (#31) and Linux companion notifications.
+        // Opens the tray's own menu rather than a system notification -
+        // see ShowFirstRunMenu()'s comment for why. Same trigger as the
+        // Windows (#31) and Linux (#33) companions.
         if (config.clientId == core::AppConfig{}.clientId) {
-            tray.ShowFirstRunNotification();
+            tray.ShowFirstRunMenu();
         }
 
         tray.OnConfigChanged = [&](const core::AppConfig& newConfig) {
