@@ -96,6 +96,14 @@ void StatusItemTray::SetInitialState(const core::AppConfig& config, bool startAt
     }
 }
 
+void StatusItemTray::ShowFirstRunNotification() {
+    NSUserNotification* notification = [[NSUserNotification alloc] init];
+    notification.title = @"FeatherRPC";
+    notification.informativeText =
+        @"FeatherRPC is running. Right-click the tray icon to set your Discord Application ID.";
+    [[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:notification];
+}
+
 void StatusItemTray::PostStatusUpdate(const std::string& text) {
     __block std::string copy = text;
     __block Impl* impl = _impl.get();
