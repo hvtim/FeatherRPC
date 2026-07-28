@@ -10,15 +10,15 @@ template.
 
 `FeatherRPC-<version>-<os>-<arch>[-suffix].<ext>`, lowercase except the
 literal `FeatherRPC` token. `os` is `windows`/`linux`/`macos` (never
-`osx`). `arch` is `x86_64` (never `x64`) everywhere a per-arch build
-exists - including Windows zips, for full cross-platform consistency.
-Windows arm64 stays `arm64` (that's the Windows ecosystem's own term, same
-reasoning as not forcing `x86_64` where it wouldn't be native).
+`osx`). `arch` is `x86_64` (never `x64`) for Linux and macOS. Windows
+keeps its own ecosystem's native arch terms instead - `x64` and `arm64`,
+not `x86_64`/`aarch64` - since that's what Windows itself calls these
+architectures.
 
 | Asset | Before | After |
 |---|---|---|
 | Windows installer | `-windows-x64-Installer.exe` / `-arm64-Installer.exe` (two files) | `-windows-installer.exe` (one file, combined - see #30) |
-| Windows zip | `-windows-x64.zip` / `-arm64.zip` | `-windows-x86_64.zip` / `-windows-arm64.zip` |
+| Windows zip | `-windows-x64.zip` / `-arm64.zip` | unchanged, already compliant |
 | Linux archive | `-linux-x64.zip` | `-linux-x86_64.tar.gz` (format change - see below) |
 | macOS DMG | `-macos-universal.dmg` | unchanged, already compliant |
 | AppImage | `-x86_64.AppImage` | unchanged, already compliant |
@@ -38,9 +38,9 @@ release the two files under their current names.
 
 Zip the `install.bat`/`uninstall.bat`/`install.ps1`/`uninstall.ps1` +
 `app/` (`FeatherRPC.exe`, `featherrpc-cli.exe`) layout `install.ps1`
-already expects (see `installer/windows/install.ps1`). Name per the After
-column: `FeatherRPC-<version>-windows-x86_64.zip` /
-`-windows-arm64.zip`.
+already expects (see `installer/windows/install.ps1`). Name stays
+`FeatherRPC-<version>-windows-x64.zip` / `-windows-arm64.zip` - `x64` is
+Windows's own term, not `x86_64`.
 
 ### macOS DMG
 
