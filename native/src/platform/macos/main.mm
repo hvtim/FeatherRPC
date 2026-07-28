@@ -21,6 +21,7 @@
 #include <sys/sysctl.h>
 #include <sys/utsname.h>
 
+#include <cstring>
 #include <deque>
 #include <fstream>
 #include <memory>
@@ -33,11 +34,17 @@ namespace {
 
 // "Music" (or the shared cross-platform default "iTunes", or empty) all
 // mean Music.app via Scripting Bridge - same reserved-literal pattern
-// Linux uses for its own "iTunes" sentinel. Only "MediaRemote" opts into
-// the any-app source.
+// Linux uses for its own "iTunes" sentinel. "MediaRemote" opts into the
+// any-app source; "MediaRemote:<bundle id>" (e.g.
+// "MediaRemote:com.google.Chrome") narrows that to one specific app -
+// same "encode the target directly in the id string" convention Windows
+// (SMTC app user model ids) and Linux (MPRIS bus names) already use.
 std::unique_ptr<core::MediaSource> MakeMediaSource(const std::string& id) {
-    if (id == "MediaRemote") {
-        return std::make_unique<platform_macos::MediaRemoteSource>();
+    constexpr const char* kMediaRemotePrefix = "MediaRemote";
+    if (id.rfind(kMediaRemotePrefix, 0) == 0) {
+        std::string rest = id.substr(std::strlen(kMediaRemotePrefix));
+        std::string appFilter = (!rest.empty() && rest.front() == ':') ? rest.substr(1) : std::string();
+        return std::make_unique<platform_macos::MediaRemoteSource>(appFilter);
     }
     return std::make_unique<platform_macos::MusicMediaSource>();
 }

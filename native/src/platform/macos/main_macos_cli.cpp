@@ -75,6 +75,16 @@ int main(int argc, char** argv) {
     // "any app" source) - see MediaRemoteSource.h for why there's nothing
     // to dynamically enumerate here, unlike Windows/Linux.
     hooks.listMediaSources = [] { return platform_macos::MediaRemoteSource::GetAvailableSources(); };
+    // Prints the exact id string `mediasource set` expects - lets a user
+    // discover the right bundle id to filter to without it ever being
+    // enumerable up front (see MediaRemoteSource::GetCurrentBundleId).
+    hooks.currentMediaSource = [] {
+        auto bundleId = platform_macos::MediaRemoteSource::GetCurrentBundleId();
+        if (!bundleId.has_value()) {
+            return std::optional<std::string>();
+        }
+        return std::optional<std::string>("MediaRemote:" + *bundleId);
+    };
     hooks.spawnDaemon = SpawnDaemon;
 
     return cli::Run(args, hooks);

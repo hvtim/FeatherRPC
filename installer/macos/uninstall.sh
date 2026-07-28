@@ -30,6 +30,12 @@ if [ -f "$CLI_PATH" ]; then
     echo "Removed featherrpc-cli."
 fi
 
+CLI_ADAPTER_DIR="$HOME/.local/bin/mediaremote-adapter"
+if [ -d "$CLI_ADAPTER_DIR" ]; then
+    rm -rf "$CLI_ADAPTER_DIR"
+    echo "Removed featherrpc-cli's bundled mediaremote-adapter."
+fi
+
 echo ""
 echo "FeatherRPC has been fully uninstalled."
 echo "Nothing else on this machine was changed - Discord and Music.app themselves are untouched."
