@@ -24,7 +24,7 @@ void PrintUsage() {
         "  arturl get|set <url>\n"
         "  icon get|set <key>\n"
         "  pollinterval get|set <ms>\n"
-        "  mediasource list|get|set <id>\n"
+        "  mediasource list|current|get|set <id>\n"
         "  tray get|on|off\n"
         "  status\n"
         "  autostart get|on|off\n"
@@ -164,6 +164,19 @@ int HandleMediaSource(const std::vector<std::string>& args, Hooks& hooks) {
         for (const auto& source : hooks.listMediaSources()) {
             std::cout << source.id << "\t" << source.displayName << "\n";
         }
+        return 0;
+    }
+    if (args[1] == "current") {
+        if (!hooks.currentMediaSource) {
+            std::cout << "Not available on this platform/source.\n";
+            return 0;
+        }
+        auto current = hooks.currentMediaSource();
+        if (!current.has_value()) {
+            std::cout << "Nothing playing right now.\n";
+            return 0;
+        }
+        std::cout << *current << "\n";
         return 0;
     }
     auto config = LoadConfig();

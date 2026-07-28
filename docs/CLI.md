@@ -65,10 +65,11 @@ tray menu's Album Art > "Set Fallback Image Key..." prompt.
 Get or set how often the media source is polled, in milliseconds. Must be
 a positive number.
 
-### `mediasource list` / `mediasource get` / `mediasource set <id>`
+### `mediasource list` / `mediasource current` / `mediasource get` / `mediasource set <id>`
 
-List the media sources currently available to pick from, get the
-currently selected one, or set it.
+List the media sources currently available to pick from, print whichever
+app is the active source *right now*, get the currently selected source,
+or set it.
 
 - `list` prints each source's id and display name, one per line.
 - Windows: `id` is `iTunes` (COM automation) or an SMTC app user model id
@@ -79,10 +80,22 @@ currently selected one, or set it.
 - macOS: `list` always prints exactly two fixed entries - `Music`
   (Music.app via Scripting Bridge) and `MediaRemote` (any other app, via
   an unofficial workaround for Apple's macOS 15.4+ MediaRemote entitlement
-  lockdown - see [KnownIssues.md](KnownIssues.md)). Unlike Windows/Linux,
-  there's no live enumeration of individual apps; `MediaRemote` always
-  tracks whatever macOS itself currently considers the active Now Playing
-  session, Spotify excluded.
+  lockdown - see [KnownIssues.md](KnownIssues.md)), Spotify excluded.
+  Unlike Windows/Linux, there's no live enumeration of every app that
+  *could* report now-playing info - `MediaRemote` on its own tracks
+  whatever macOS itself currently considers the active Now Playing
+  session, system-wide.
+- macOS only: `MediaRemote:<bundle id>` (e.g.
+  `MediaRemote:com.google.Chrome`) narrows that down to just one specific
+  app - every other app reads as "nothing playing" instead. Since there's
+  no way to enumerate available bundle ids up front, `mediasource current`
+  prints the exact string to use, pre-formatted for `mediasource set`:
+  play something in the app you want to filter to, then run
+  `featherrpc-cli mediasource current` and pass its output straight to
+  `mediasource set`. Prints "Nothing playing right now." if nothing is,
+  and "Not available on this platform/source." on Windows/Linux (there's
+  nothing to discover this way there - `list` already enumerates
+  everything).
 
 ### `tray get` / `tray on` / `tray off`
 

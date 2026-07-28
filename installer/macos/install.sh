@@ -45,6 +45,15 @@ if [ -f "$SCRIPT_DIR/featherrpc-cli" ]; then
     mkdir -p "$HOME/.local/bin"
     cp -f "$SCRIPT_DIR/featherrpc-cli" "$HOME/.local/bin/featherrpc-cli"
     chmod +x "$HOME/.local/bin/featherrpc-cli"
+
+    # `mediasource current` needs the adapter bundled next to the CLI
+    # binary (see the featherrpc-cli POST_BUILD step in native/CMakeLists.txt)
+    # - it's not part of the .app bundle, so it doesn't get this for free
+    # from Contents/Resources like the GUI target does.
+    if [ -d "$SCRIPT_DIR/mediaremote-adapter" ]; then
+        rm -rf "$HOME/.local/bin/mediaremote-adapter"
+        cp -R "$SCRIPT_DIR/mediaremote-adapter" "$HOME/.local/bin/mediaremote-adapter"
+    fi
 fi
 
 if [ "$NO_AUTOSTART" -eq 0 ]; then

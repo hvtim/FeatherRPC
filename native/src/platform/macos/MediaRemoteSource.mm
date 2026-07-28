@@ -54,7 +54,38 @@ std::optional<std::string> RunAdapter(const std::vector<std::string>& args) {
     }
 }
 
+// bundleIdentifier from a `get` call, or nullopt if nothing is playing,
+// the call failed, or the response has no usable bundle identifier.
+// Shared by GetCurrentTrack() and the static GetCurrentBundleId() - both
+// need exactly this, just for different purposes (filtering vs. discovery).
+std::optional<std::string> CurrentBundleIdFromAdapter() {
+    auto output = RunAdapter({ResourcePath("MediaRemoteAdapter.framework"), "get", "--no-artwork"});
+    if (!output.has_value()) {
+        return std::nullopt;
+    }
+    nlohmann::json json;
+    try {
+        json = nlohmann::json::parse(*output);
+    } catch (const nlohmann::json::exception&) {
+        return std::nullopt;
+    }
+    if (json.is_null()) {
+        return std::nullopt;
+    }
+    auto bundleId = json.find("bundleIdentifier");
+    if (bundleId == json.end() || !bundleId->is_string() || bundleId->get<std::string>().empty()) {
+        return std::nullopt;
+    }
+    return bundleId->get<std::string>();
+}
+
 } // namespace
+
+MediaRemoteSource::MediaRemoteSource(std::string appFilter) : _appFilter(std::move(appFilter)) {}
+
+std::optional<std::string> MediaRemoteSource::GetCurrentBundleId() {
+    return CurrentBundleIdFromAdapter();
+}
 
 bool MediaRemoteSource::EnsureAdapterWorks() {
     if (_testedAdapter) {
@@ -109,10 +140,23 @@ std::optional<core::TrackInfo> MediaRemoteSource::GetCurrentTrack() {
     }
 
     auto bundleId = json.find("bundleIdentifier");
-    if (bundleId != json.end() && bundleId->is_string() && bundleId->get<std::string>() == kSpotifyBundleId) {
-        // Spotify has its own official Discord Rich Presence integration -
-        // excluded here for the same reason SmtcMediaSource/MprisMediaSource
-        // exclude it on Windows/Linux.
+    std::string actualBundleId =
+        (bundleId != json.end() && bundleId->is_string()) ? bundleId->get<std::string>() : std::string();
+
+    // Spotify is excluded unconditionally, regardless of any configured
+    // _appFilter - it has its own official Discord Rich Presence
+    // integration, same reason SmtcMediaSource/MprisMediaSource exclude
+    // it on Windows/Linux. Explicitly filtering *to* Spotify's own bundle
+    // id doesn't override this.
+    if (actualBundleId == kSpotifyBundleId) {
+        return std::nullopt;
+    }
+
+    // Empty _appFilter (the default) means "any app" - the original
+    // catch-all behavior. Otherwise, only report tracks from the one
+    // configured app; everything else reads as "nothing playing" rather
+    // than showing the wrong app's track.
+    if (!_appFilter.empty() && actualBundleId != _appFilter) {
         return std::nullopt;
     }
 
