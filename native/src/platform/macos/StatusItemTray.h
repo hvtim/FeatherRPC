@@ -30,6 +30,20 @@ public:
     // ever shown.
     void SetInitialState(const core::AppConfig& config, bool startAtLogin);
 
+    // Shows a one-time NSUserNotification confirming the app is running
+    // and pointing at the one required setup step (setting a Discord
+    // Application ID). main.mm calls this once, right after the tray is
+    // created, only while config.clientId is still the placeholder
+    // default - never persisted, so it naturally stops showing once
+    // `featherrpc-cli appid set` has been used. Uses the deprecated
+    // NSUserNotificationCenter rather than UNUserNotificationCenter: the
+    // latter needs a proper bundle identifier plus an entitlement/
+    // framework link and can trigger a user permission prompt, which
+    // isn't the minimal-footprint choice here - NSUserNotificationCenter
+    // works with zero new frameworks/linker flags from code already
+    // linking Cocoa.
+    void ShowFirstRunNotification();
+
     // Safe to call from any thread - marshals onto the main thread via
     // dispatch_async(dispatch_get_main_queue(), ...), the Cocoa
     // equivalent of the Windows TrayIcon's PostMessage-based marshaling.
