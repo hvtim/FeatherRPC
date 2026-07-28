@@ -2,15 +2,15 @@
 
 # FeatherRPC
 
-Syncs whatever's currently playing to Discord as a Rich Presence status.
+Shows what you're currently listening to on your Discord profile, the
+same "Listening to..." status Spotify shows, but for iTunes, Apple
+Music, VLC, your browser, and more.
 
 - Windows: iTunes, VLC, browsers, or anything else that reports
   now-playing info to the system.
-- Linux: any MPRIS-compliant player.
+- Linux: most media players (anything using MPRIS, the standard most
+  Linux apps support).
 - macOS: Music.app, or any other app via macOS's own Now Playing.
-
-Native C++, no runtime, no bundled GUI toolkit. Idle memory use is a few
-megabytes.
 
 > Built with the help of [Claude Code](https://claude.com/claude-code)
 > (Anthropic's AI coding agent).
@@ -18,21 +18,43 @@ megabytes.
 Check [docs/KnownIssues.md](docs/KnownIssues.md) for what's verified on
 each platform before relying on this.
 
+## Usage
+
+1. Create a Discord application at
+   [discord.com/developers/applications](https://discord.com/developers/applications)
+   and copy its Application ID. No bot account or OAuth setup needed -
+   Rich Presence connects over Discord's local IPC protocol, not the bot
+   API.
+2. Install FeatherRPC (see [Install](#install) below).
+3. Right-click the tray icon, paste the Application ID, and set any other
+   preferences from the same menu (see [Tray menu](#tray-menu) below).
+
+The Discord desktop app has to be running - Rich Presence connects to it
+locally, not through the browser.
+
 ## Install
 
+<!-- TODO: update filenames once #30/#35 land -->
 ### Windows
 
 #### Installer
 
-No admin rights needed. Download
+Recommended - wizard, Start Menu shortcut, uninstaller registered in
+Windows Settings. No admin rights needed. Download
 `FeatherRPC-<version>-windows-x64-Installer.exe` (`-arm64` on ARM64
 Windows) from the [latest release](../../releases/latest) and run it.
 Installs to `%LOCALAPPDATA%\FeatherRPC`.
 
+Windows will likely show a blue "Windows protected your PC" screen: this
+is expected, the installer isn't code-signed yet. Click "More info" then
+"Run anyway" to continue.
+
 #### Zip
 
-Download and extract `FeatherRPC-<version>-windows-x64.zip` (`-arm64` on
-ARM64 Windows) from the [latest release](../../releases/latest), then:
+Portable, no install wizard - for scripted setups or people who'd rather
+not run an installer. Download and extract
+`FeatherRPC-<version>-windows-x64.zip` (`-arm64` on ARM64 Windows) from
+the [latest release](../../releases/latest), then:
 
 ```
 install.bat
@@ -68,20 +90,6 @@ chmod +x install.sh uninstall.sh
 No prebuilt binary yet - see [docs/Building.md](docs/Building.md) to
 build from source.
 
-## Usage
-
-1. Create a Discord application at
-   [discord.com/developers/applications](https://discord.com/developers/applications)
-   and copy its Application ID. No bot account or OAuth setup needed -
-   Rich Presence connects over Discord's local IPC protocol, not the bot
-   API.
-2. Install FeatherRPC (see [Install](#install) above).
-3. Right-click the tray icon, paste the Application ID, and set any other
-   preferences from the same menu (see [Tray menu](#tray-menu) below).
-
-The Discord desktop app has to be running - Rich Presence connects to it
-locally, not through the browser.
-
 ## Tray menu
 
 Right-click the tray icon:
@@ -113,6 +121,8 @@ Run the app itself with `--no-tray` for headless mode.
 
 ## How it works
 
+- Native C++, no runtime, no bundled GUI toolkit. Idle memory use is a
+  few megabytes.
 - Polls the selected media source every 2 seconds (COM for iTunes on
   Windows, C++/WinRT SMTC for other Windows apps, MPRIS/D-Bus on Linux,
   Scripting Bridge for Music.app on macOS or a MediaRemote-based
