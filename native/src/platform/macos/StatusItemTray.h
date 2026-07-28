@@ -30,19 +30,22 @@ public:
     // ever shown.
     void SetInitialState(const core::AppConfig& config, bool startAtLogin);
 
-    // Shows a one-time NSUserNotification confirming the app is running
-    // and pointing at the one required setup step (setting a Discord
-    // Application ID). main.mm calls this once, right after the tray is
-    // created, only while config.clientId is still the placeholder
-    // default - never persisted, so it naturally stops showing once
-    // `featherrpc-cli appid set` has been used. Uses the deprecated
-    // NSUserNotificationCenter rather than UNUserNotificationCenter: the
-    // latter needs a proper bundle identifier plus an entitlement/
-    // framework link and can trigger a user permission prompt, which
-    // isn't the minimal-footprint choice here - NSUserNotificationCenter
-    // works with zero new frameworks/linker flags from code already
-    // linking Cocoa.
-    void ShowFirstRunNotification();
+    // Opens the tray's own dropdown menu once, right after creation, if
+    // the app is still unconfigured - the macOS equivalent of the
+    // Windows/Linux first-run notifications (#31/#33), but deliberately
+    // not a system notification: NSUserNotificationCenter's first-ever
+    // call implicitly triggers a permission prompt on Big Sur+, and that
+    // first notification is typically dropped rather than shown even if
+    // the user allows it: there's no reliable way to guarantee the
+    // message actually appears on a genuinely fresh launch. The modern
+    // UNUserNotificationCenter's explicit requestAuthorization doesn't
+    // help either - Apple requires the app be code-signed for that
+    // permission dialog to appear at all, and this app isn't signed yet
+    // (see #29). Opening the menu directly is pure in-app UI, no
+    // permission involved either way: it confirms the app is running
+    // (the menu belongs to a live process) and puts "Set Discord
+    // Application ID..." right in front of the user immediately.
+    void ShowFirstRunMenu();
 
     // Safe to call from any thread - marshals onto the main thread via
     // dispatch_async(dispatch_get_main_queue(), ...), the Cocoa
