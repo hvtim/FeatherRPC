@@ -7,7 +7,7 @@ Syncs whatever's currently playing to Discord as a Rich Presence status.
 - Windows: iTunes, VLC, browsers, or anything else that reports
   now-playing info to the system.
 - Linux: any MPRIS-compliant player.
-- macOS: Music.app.
+- macOS: Music.app, or any other app via macOS's own Now Playing.
 
 Native C++, no runtime, no bundled GUI toolkit. Idle memory use is a few
 megabytes.
@@ -15,8 +15,8 @@ megabytes.
 > Built with the help of [Claude Code](https://claude.com/claude-code)
 > (Anthropic's AI coding agent).
 
-**v0.1.0, not production-stable.** Check [docs/KnownIssues.md](docs/KnownIssues.md)
-for what's verified on each platform before relying on this.
+Check [docs/KnownIssues.md](docs/KnownIssues.md) for what's verified on
+each platform before relying on this.
 
 ## Install
 
@@ -115,7 +115,8 @@ Run the app itself with `--no-tray` for headless mode.
 
 - Polls the selected media source every 2 seconds (COM for iTunes on
   Windows, C++/WinRT SMTC for other Windows apps, MPRIS/D-Bus on Linux,
-  Scripting Bridge for Music.app on macOS).
+  Scripting Bridge for Music.app on macOS or a MediaRemote-based
+  workaround for any other Mac app).
 - Sends a "Listening to" Rich Presence activity with a live progress bar.
 - Looks up cover art automatically (Apple's iTunes Search API, then
   MusicBrainz + Cover Art Archive). See [docs/AlbumArt.md](docs/AlbumArt.md).
@@ -128,8 +129,8 @@ Full detail in [docs/KnownIssues.md](docs/KnownIssues.md). Headlines:
 - The "Listening to" wording isn't officially supported for third-party
   apps and could change in a future Discord update.
 - Album art falls back to a static image if no automatic match is found.
-- macOS is code-complete but has never been built or run - no Mac
-  hardware was available during development.
+- macOS is verified on Intel; Apple Silicon (arm64) compiles but has
+  never run on real Apple Silicon hardware.
 - Linux tray rendering is confirmed on KDE Plasma 6; other desktop
   environments are untested.
 - Windows ARM64 compiles but has never run on real ARM64 hardware.
