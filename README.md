@@ -22,9 +22,8 @@ each platform before relying on this.
 
 1. Create a Discord application at
    [discord.com/developers/applications](https://discord.com/developers/applications)
-   and copy its Application ID. No bot account or OAuth setup needed -
-   Rich Presence connects over Discord's local IPC protocol, not the bot
-   API.
+   and copy its Application ID - this is what tells Discord which name
+   and icon to show for your status.
 2. Install FeatherRPC (see [Install](#install) below).
 3. Right-click the tray icon, paste the Application ID, and set any other
    preferences from the same menu (see [Tray menu](#tray-menu) below).
@@ -34,20 +33,17 @@ locally, not through the browser.
 
 ## Install
 
-<!-- TODO: update filenames once #30/#35 land -->
 ### Windows
 
-#### Installer
+#### Installer (recommended)
 
-Recommended - wizard, Start Menu shortcut, uninstaller registered in
-Windows Settings. No admin rights needed. Download
-`FeatherRPC-<version>-windows-x64-Installer.exe` (`-arm64` on ARM64
-Windows) from the [latest release](../../releases/latest) and run it.
-Installs to `%LOCALAPPDATA%\FeatherRPC`.
+Download `FeatherRPC-<version>-windows-installer.exe` from the
+[latest release](../../releases/latest) and run it - it detects your CPU
+architecture automatically. Installs to `%LOCALAPPDATA%\FeatherRPC`.
 
 Windows will likely show a blue "Windows protected your PC" screen: this
-is expected, the installer isn't code-signed yet. Click "More info" then
-"Run anyway" to continue.
+is expected, not a sign anything's wrong - FeatherRPC just isn't
+code-signed yet. Click "More info" then "Run anyway" to continue.
 
 #### Zip
 
@@ -77,11 +73,10 @@ chmod +x FeatherRPC-*.AppImage
 
 Installs to `~/.local/share/FeatherRPC`, sets up autostart, and puts the
 `featherrpc` CLI on `$PATH`. Download and extract
-`FeatherRPC-<version>-linux-x64.zip` from the
+`FeatherRPC-<version>-linux-x86_64.tar.gz` from the
 [latest release](../../releases/latest), then:
 
 ```bash
-chmod +x install.sh uninstall.sh
 ./install.sh
 ```
 
@@ -127,7 +122,8 @@ Run the app itself with `--no-tray` for headless mode.
   Windows, C++/WinRT SMTC for other Windows apps, MPRIS/D-Bus on Linux,
   Scripting Bridge for Music.app on macOS or a MediaRemote-based
   workaround for any other Mac app).
-- Sends a "Listening to" Rich Presence activity with a live progress bar.
+- Sends a "Listening to" Rich Presence activity with a live progress bar,
+  over Discord's local IPC protocol.
 - Looks up cover art automatically (Apple's iTunes Search API, then
   MusicBrainz + Cover Art Archive). See [docs/AlbumArt.md](docs/AlbumArt.md).
 - Spotify is excluded - it has its own Discord integration.
