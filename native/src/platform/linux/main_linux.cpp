@@ -41,6 +41,13 @@ bool HasNoTrayFlag(int argc, char** argv) {
     return false;
 }
 
+// Mirrors AppConfig.h's own default for AppConfig::clientId, and
+// PresenceEngine.cpp's private kPlaceholderClientId - kept as a separate
+// copy here (rather than a shared header constant) because that's how the
+// existing PresenceEngine.cpp copy already does it; not worth a shared
+// header for one literal used in two translation units.
+constexpr const char* kPlaceholderClientId = "YOUR_DISCORD_CLIENT_ID_HERE";
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -133,6 +140,16 @@ int main(int argc, char** argv) {
         return 1;
     }
     tray.SetInitialState(config, autoLaunch.IsEnabled());
+
+    // First-run onboarding: users testing the tray-only (no window) build
+    // weren't sure it had started, or that a Discord Application ID even
+    // needed to be set. One notification, once per launch (not persisted -
+    // simply re-shown every time clientId is still the placeholder, same
+    // trigger as the Windows/macOS companions in #31/#32), closes both
+    // gaps without adding any state to track "already shown".
+    if (config.clientId.empty() || config.clientId == kPlaceholderClientId) {
+        tray.ShowFirstRunNotification();
+    }
 
     // Mirrors the headless reload loop below, but triggered by SniTray's
     // own g_unix_signal_add(SIGHUP, ...) instead of a sigwait() loop (see
