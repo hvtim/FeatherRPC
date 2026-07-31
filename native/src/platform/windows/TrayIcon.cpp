@@ -5,6 +5,8 @@
 
 #include <commctrl.h>
 
+#include <thread>
+
 namespace nativeui {
 
 namespace {
@@ -34,12 +36,24 @@ const wchar_t* kWindowClassName = L"FeatherRPCNativeTrayWindow";
 TrayIcon::TrayIcon() = default;
 
 TrayIcon::~TrayIcon() {
+    if (mediaSourcesRefreshThread_.joinable()) {
+        {
+            std::lock_guard<std::mutex> lock(mediaSourcesRefreshMutex_);
+            mediaSourcesRefreshShouldExit_ = true;
+        }
+        mediaSourcesRefreshCv_.notify_one();
+        mediaSourcesRefreshThread_.join();
+    }
+
     if (hwnd_) {
         Shell_NotifyIconW(NIM_DELETE, &nid_);
         DestroyWindow(hwnd_);
     }
     if (icon_) {
         DestroyIcon(icon_);
+    }
+    if (menu_) {
+        DestroyMenu(menu_); // recursively destroys sourceMenu_/artMenu_/pollMenu_ too
     }
     UnregisterClassW(kWindowClassName, hInstance_);
 }
@@ -80,7 +94,14 @@ bool TrayIcon::Create(HINSTANCE hInstance, const std::wstring& tooltip) {
 
     // Loads (and rescales if needed) whichever embedded frame in icon.ico
     // best matches the tray's actual small-icon size, rather than
-    // decoding the largest frame and scaling it down.
+    // decoding the largest frame and scaling it down. icon.ico bakes an
+    // exact frame for every standard Windows display-scaling percentage
+    // (100%-350%), for rendering quality at whatever scale the user is
+    // on - NOT to avoid any loading cost: confirmed (optimize/windows-
+    // memory-footprint) that Windows' icon-loading APIs load the same
+    // WIC-based codec pipeline regardless of which API is called or
+    // whether the source frame is an exact match, so there's no cheaper
+    // path to take here.
     int cx = GetSystemMetrics(SM_CXSMICON);
     int cy = GetSystemMetrics(SM_CYSMICON);
     if (FAILED(LoadIconWithScaleDown(hInstance_, MAKEINTRESOURCEW(IDI_APP_ICON), cx, cy, &icon_))) {
@@ -89,7 +110,54 @@ bool TrayIcon::Create(HINSTANCE hInstance, const std::wstring& tooltip) {
     nid_.hIcon = icon_ ? icon_ : LoadIconW(nullptr, IDI_APPLICATION);
     wcsncpy_s(nid_.szTip, tooltip.c_str(), _TRUNCATE);
 
+    StartMediaSourcesRefreshThread();
+    BuildMenuOnce();
+
     return Shell_NotifyIconW(NIM_ADD, &nid_) == TRUE;
+}
+
+void TrayIcon::StartMediaSourcesRefreshThread() {
+    // One thread, for the whole life of the app, instead of spawning a
+    // new one per right-click - see ShowContextMenu()'s comment. Safe to
+    // capture `this` here (unlike the per-click approach this replaced):
+    // the destructor signals + joins this thread before any other
+    // teardown, so `this` stays valid for the thread's entire lifetime.
+    mediaSourcesRefreshThread_ = std::thread([this] {
+        while (true) {
+            std::unique_lock<std::mutex> lock(mediaSourcesRefreshMutex_);
+            mediaSourcesRefreshCv_.wait(lock, [this] {
+                return mediaSourcesRefreshRequested_ || mediaSourcesRefreshShouldExit_;
+            });
+            if (mediaSourcesRefreshShouldExit_) {
+                return;
+            }
+            mediaSourcesRefreshRequested_ = false;
+            lock.unlock();
+
+            if (!OnRefreshMediaSources) {
+                continue;
+            }
+            // The WinRT GlobalSystemMediaTransportControls call this makes
+            // must never run on the UI thread - confirmed (issue #57) to
+            // deadlock there even indirectly (e.g. a UI-thread .join() on
+            // a worker doing this call also hung). This thread never
+            // touches window messages itself, only PostMessageW's the
+            // result back, which is what makes it safe - same shape as
+            // PresenceEngine's own worker thread, which never hung.
+            auto* sources = new std::vector<core::MediaSourceInfo>(OnRefreshMediaSources());
+            if (!PostMessageW(hwnd_, WM_MEDIASOURCESUPDATE, 0, reinterpret_cast<LPARAM>(sources))) {
+                delete sources;
+            }
+        }
+    });
+}
+
+void TrayIcon::RequestMediaSourcesRefresh() {
+    {
+        std::lock_guard<std::mutex> lock(mediaSourcesRefreshMutex_);
+        mediaSourcesRefreshRequested_ = true;
+    }
+    mediaSourcesRefreshCv_.notify_one();
 }
 
 void TrayIcon::SetInitialState(const core::AppConfig& config, bool startAtLogin) {
@@ -156,6 +224,32 @@ LRESULT TrayIcon::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             return 0;
         }
+        case WM_MEDIASOURCESUPDATE: {
+            auto* sources = reinterpret_cast<std::vector<core::MediaSourceInfo>*>(lParam);
+            if (sources) {
+                // ShowContextMenu() wakes the refresh thread on every single
+                // click, so this message arrives after every click too -
+                // most of the time the set of playing apps hasn't actually
+                // changed since last time. Rebuilding sourceMenu_'s items
+                // (DeleteMenu+AppendMenuW) is real, repeated work; skipping
+                // it when nothing changed is what actually stops the
+                // per-click growth, rather than just moving it to a
+                // background thread (which only stopped it from blocking
+                // the UI, not from happening at all).
+                std::vector<core::MediaSourceInfo> updated;
+                updated.push_back({"iTunes", "iTunes"});
+                for (auto& source : *sources) {
+                    updated.push_back(source);
+                }
+                delete sources;
+
+                if (updated != mediaSources_) {
+                    mediaSources_ = std::move(updated);
+                    RefreshSourceMenuItems();
+                }
+            }
+            return 0;
+        }
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
@@ -164,81 +258,104 @@ LRESULT TrayIcon::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     }
 }
 
-HMENU TrayIcon::BuildMenu() {
-    HMENU menu = CreatePopupMenu();
+void TrayIcon::BuildMenuOnce() {
+    menu_ = CreatePopupMenu();
 
-    AppendMenuW(menu, MF_STRING, CMD_SET_APP_ID, L"Set Discord Application ID...");
+    AppendMenuW(menu_, MF_STRING, CMD_SET_APP_ID, L"Set Discord Application ID...");
 
-    HMENU sourceMenu = CreatePopupMenu();
-    int selectedSourceIndex = -1;
+    sourceMenu_ = CreatePopupMenu();
+    AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(sourceMenu_), L"Media Source");
+
+    AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
+
+    AppendMenuW(menu_, MF_STRING, CMD_TOGGLE_BROADCAST, L"Broadcast now playing to Discord");
+    AppendMenuW(menu_, MF_STRING, CMD_TOGGLE_TRACK_NUMBER, L"Show track number");
+
+    artMenu_ = CreatePopupMenu();
+    AppendMenuW(artMenu_, MF_STRING, CMD_ART_MODE_AUTO, L"Automatic (look up cover art)");
+    AppendMenuW(artMenu_, MF_STRING, CMD_ART_MODE_CUSTOM, L"Custom image URL...");
+    AppendMenuW(artMenu_, MF_STRING, CMD_ART_MODE_OFF, L"Fallback image only");
+    AppendMenuW(artMenu_, MF_STRING, CMD_SET_FALLBACK_KEY, L"Set Fallback Image Key...");
+    AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(artMenu_), L"Album Art");
+
+    pollMenu_ = CreatePopupMenu();
+    for (size_t i = 0; i < pollIntervalPresetsMs_.size(); ++i) {
+        std::wstring label = std::to_wstring(pollIntervalPresetsMs_[i] / 1000) + L"s";
+        AppendMenuW(pollMenu_, MF_STRING, CMD_POLL_INTERVAL_BASE + static_cast<UINT>(i), label.c_str());
+    }
+    AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(pollMenu_), L"Poll Interval");
+
+    AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu_, MF_STRING, CMD_TOGGLE_START_AT_LOGIN, L"Start automatically when you log in");
+    AppendMenuW(menu_, MF_STRING, CMD_TOGGLE_TRAY_ENABLED, L"Show tray icon (applies next launch)");
+
+    AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu_, MF_STRING, CMD_EXIT, L"Exit");
+
+    // Every submenu above now exists, so it's safe for this to sync
+    // checked/radio state (including artMenu_/pollMenu_, which an earlier
+    // call couldn't safely touch before they existed).
+    RefreshSourceMenuItems();
+}
+
+void TrayIcon::RefreshSourceMenuItems() {
+    while (GetMenuItemCount(sourceMenu_) > 0) {
+        DeleteMenu(sourceMenu_, 0, MF_BYPOSITION);
+    }
     for (size_t i = 0; i < mediaSources_.size(); ++i) {
         std::wstring label = platform_windows::WideFromNarrow(mediaSources_[i].displayName);
-        AppendMenuW(sourceMenu, MF_STRING, CMD_MEDIA_SOURCE_BASE + static_cast<UINT>(i), label.c_str());
+        AppendMenuW(sourceMenu_, MF_STRING, CMD_MEDIA_SOURCE_BASE + static_cast<UINT>(i), label.c_str());
+    }
+    SyncMenuState();
+}
+
+void TrayIcon::SyncMenuState() {
+    CheckMenuItem(menu_, CMD_TOGGLE_BROADCAST, MF_BYCOMMAND | (config_.broadcastEnabled ? MF_CHECKED : MF_UNCHECKED));
+    CheckMenuItem(menu_, CMD_TOGGLE_TRACK_NUMBER, MF_BYCOMMAND | (config_.showTrackNumber ? MF_CHECKED : MF_UNCHECKED));
+    CheckMenuItem(menu_, CMD_TOGGLE_START_AT_LOGIN, MF_BYCOMMAND | (startAtLogin_ ? MF_CHECKED : MF_UNCHECKED));
+    CheckMenuItem(menu_, CMD_TOGGLE_TRAY_ENABLED, MF_BYCOMMAND | (config_.trayEnabled ? MF_CHECKED : MF_UNCHECKED));
+
+    UINT artChecked = config_.artMode == "Custom" ? CMD_ART_MODE_CUSTOM
+        : config_.artMode == "Off" ? CMD_ART_MODE_OFF : CMD_ART_MODE_AUTO;
+    CheckMenuRadioItem(artMenu_, CMD_ART_MODE_AUTO, CMD_ART_MODE_OFF, artChecked, MF_BYCOMMAND);
+
+    int selectedPollIndex = 0;
+    for (size_t i = 0; i < pollIntervalPresetsMs_.size(); ++i) {
+        if (pollIntervalPresetsMs_[i] == config_.pollIntervalMs) {
+            selectedPollIndex = static_cast<int>(i);
+            break;
+        }
+    }
+    CheckMenuRadioItem(pollMenu_, CMD_POLL_INTERVAL_BASE,
+        CMD_POLL_INTERVAL_BASE + static_cast<UINT>(pollIntervalPresetsMs_.size()) - 1,
+        CMD_POLL_INTERVAL_BASE + static_cast<UINT>(selectedPollIndex), MF_BYCOMMAND);
+
+    int selectedSourceIndex = -1;
+    for (size_t i = 0; i < mediaSources_.size(); ++i) {
         if (mediaSources_[i].id == config_.mediaSource) {
             selectedSourceIndex = static_cast<int>(i);
+            break;
         }
     }
     if (selectedSourceIndex >= 0) {
-        CheckMenuRadioItem(sourceMenu, CMD_MEDIA_SOURCE_BASE,
+        CheckMenuRadioItem(sourceMenu_, CMD_MEDIA_SOURCE_BASE,
             CMD_MEDIA_SOURCE_BASE + static_cast<UINT>(mediaSources_.size()) - 1,
             CMD_MEDIA_SOURCE_BASE + static_cast<UINT>(selectedSourceIndex), MF_BYCOMMAND);
     }
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(sourceMenu), L"Media Source");
-
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-
-    AppendMenuW(menu, MF_STRING | (config_.broadcastEnabled ? MF_CHECKED : MF_UNCHECKED),
-        CMD_TOGGLE_BROADCAST, L"Broadcast now playing to Discord");
-    AppendMenuW(menu, MF_STRING | (config_.showTrackNumber ? MF_CHECKED : MF_UNCHECKED),
-        CMD_TOGGLE_TRACK_NUMBER, L"Show track number");
-
-    HMENU artMenu = CreatePopupMenu();
-    AppendMenuW(artMenu, MF_STRING, CMD_ART_MODE_AUTO, L"Automatic (look up cover art)");
-    AppendMenuW(artMenu, MF_STRING, CMD_ART_MODE_CUSTOM, L"Custom image URL...");
-    AppendMenuW(artMenu, MF_STRING, CMD_ART_MODE_OFF, L"Fallback image only");
-    UINT artChecked = config_.artMode == "Custom" ? CMD_ART_MODE_CUSTOM
-        : config_.artMode == "Off" ? CMD_ART_MODE_OFF : CMD_ART_MODE_AUTO;
-    CheckMenuRadioItem(artMenu, CMD_ART_MODE_AUTO, CMD_ART_MODE_OFF, artChecked, MF_BYCOMMAND);
-    AppendMenuW(artMenu, MF_STRING, CMD_SET_FALLBACK_KEY, L"Set Fallback Image Key...");
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(artMenu), L"Album Art");
-
-    HMENU pollMenu = CreatePopupMenu();
-    int selectedPollIndex = 0;
-    for (size_t i = 0; i < pollIntervalPresetsMs_.size(); ++i) {
-        std::wstring label = std::to_wstring(pollIntervalPresetsMs_[i] / 1000) + L"s";
-        AppendMenuW(pollMenu, MF_STRING, CMD_POLL_INTERVAL_BASE + static_cast<UINT>(i), label.c_str());
-        if (pollIntervalPresetsMs_[i] == config_.pollIntervalMs) {
-            selectedPollIndex = static_cast<int>(i);
-        }
-    }
-    CheckMenuRadioItem(pollMenu, CMD_POLL_INTERVAL_BASE,
-        CMD_POLL_INTERVAL_BASE + static_cast<UINT>(pollIntervalPresetsMs_.size()) - 1,
-        CMD_POLL_INTERVAL_BASE + static_cast<UINT>(selectedPollIndex), MF_BYCOMMAND);
-    AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(pollMenu), L"Poll Interval");
-
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING | (startAtLogin_ ? MF_CHECKED : MF_UNCHECKED),
-        CMD_TOGGLE_START_AT_LOGIN, L"Start automatically when you log in");
-    AppendMenuW(menu, MF_STRING | (config_.trayEnabled ? MF_CHECKED : MF_UNCHECKED),
-        CMD_TOGGLE_TRAY_ENABLED, L"Show tray icon (applies next launch)");
-
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, CMD_EXIT, L"Exit");
-
-    return menu;
 }
 
 void TrayIcon::ShowContextMenu() {
-    if (OnRefreshMediaSources) {
-        auto sources = OnRefreshMediaSources();
-        mediaSources_.clear();
-        mediaSources_.push_back({"iTunes", "iTunes"});
-        for (auto& source : sources) {
-            mediaSources_.push_back(source);
-        }
-    }
-
-    HMENU menu = BuildMenu();
+    // Deliberately not awaited - the refresh happens in the background;
+    // this call just wakes the one long-lived worker thread, and shows
+    // the menu immediately with whatever's already in mediaSources_
+    // (stale, or the iTunes-only default on first run) rather than
+    // blocking on it. The underlying WinRT GlobalSystemMediaTransport
+    // Controls call must never run on this thread synchronously - see
+    // StartMediaSourcesRefreshThread()'s comment for why. The *next* time
+    // the menu opens it reflects the refresh - same eventually-consistent,
+    // cross-thread pattern PostStatusUpdate already uses for the tooltip.
+    RequestMediaSourcesRefresh();
+    SyncMenuState();
 
     POINT pt;
     GetCursorPos(&pt);
@@ -246,12 +363,10 @@ void TrayIcon::ShowContextMenu() {
     // Required so the menu dismisses correctly when the user clicks
     // elsewhere - a well-known Win32 tray-icon quirk, not optional.
     SetForegroundWindow(hwnd_);
-    UINT cmd = TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD,
+    UINT cmd = TrackPopupMenu(menu_, TPM_RIGHTBUTTON | TPM_RETURNCMD,
         pt.x, pt.y, 0, hwnd_, nullptr);
     // Companion half of the SetForegroundWindow fix above.
     PostMessageW(hwnd_, WM_NULL, 0, 0);
-
-    DestroyMenu(menu);
 
     if (cmd != 0) {
         HandleCommand(cmd);
