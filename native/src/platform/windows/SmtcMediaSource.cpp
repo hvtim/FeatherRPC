@@ -299,6 +299,25 @@ std::string DisplayNameForAppId(const std::string& appId) {
     return name;
 }
 
+// Truncated so a long browser-tab title can't blow out the Media Source
+// submenu's width - truncates in UTF-16 (wchar_t) space, before narrowing
+// to UTF-8, so this can never split a multi-byte UTF-8 sequence.
+constexpr size_t kMaxTitleLengthForMenu = 40;
+
+std::string TrackTitleForMenu(GlobalSystemMediaTransportControlsSession const& session) {
+    try {
+        auto props = session.TryGetMediaPropertiesAsync().get();
+        auto hTitle = props.Title();
+        std::wstring_view title(hTitle.c_str(), hTitle.size());
+        if (title.size() > kMaxTitleLengthForMenu) {
+            return NarrowFromWide(title.substr(0, kMaxTitleLengthForMenu)) + "...";
+        }
+        return NarrowFromWide(title);
+    } catch (...) {
+        return {}; // no track properties available right now - show just the app name
+    }
+}
+
 } // namespace
 
 SmtcMediaSource::SmtcMediaSource(std::string appUserModelId) : _appUserModelId(std::move(appUserModelId)) {
@@ -315,7 +334,12 @@ std::vector<core::MediaSourceInfo> SmtcMediaSource::GetAvailableSources() {
             if (id.empty() || IsSpotify(id)) {
                 continue;
             }
-            result.push_back({id, DisplayNameForAppId(id)});
+            std::string label = DisplayNameForAppId(id);
+            std::string title = TrackTitleForMenu(session);
+            if (!title.empty()) {
+                label += " \xe2\x80\x94 " + title; // em dash, matches AppNameFromWindowTitle's separator style
+            }
+            result.push_back({id, label});
         }
     } catch (...) {
         // SMTC unavailable (very old Windows build, or the API threw) -
