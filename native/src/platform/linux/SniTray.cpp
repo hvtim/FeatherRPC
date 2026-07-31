@@ -225,6 +225,65 @@ void SniTray::SetInitialState(const core::AppConfig& config, bool startAtLogin) 
     startAtLogin_ = startAtLogin;
 }
 
+void SniTray::ShowFirstRunNotification() {
+    if (!connection_) {
+        return;
+    }
+
+    // Empty app_icon: same reasoning as IconName in GetSniProperty below -
+    // there's no icon theme to reliably resolve a name against (a bare
+    // AppImage run has none), and IconPixmap-style inline image data isn't
+    // an option for this call (Notify's app_icon parameter is a themed
+    // name or a file path string, not pixel data), so an empty string is
+    // the least-broken choice; the notification daemon falls back to its
+    // own generic icon.
+    //
+    // Empty actions array and hints dict: this is a plain informational
+    // popup, no default/alternate action and no urgency/category hint
+    // needed.
+    GVariantBuilder actionsBuilder;
+    g_variant_builder_init(&actionsBuilder, G_VARIANT_TYPE("as"));
+    GVariantBuilder hintsBuilder;
+    g_variant_builder_init(&hintsBuilder, G_VARIANT_TYPE("a{sv}"));
+
+    // Async, not g_dbus_connection_call_sync - this runs once at startup,
+    // before the main loop is even pumping yet, so a slow-to-respond
+    // notification daemon would otherwise block app startup entirely for a
+    // notification that's best-effort in the first place (see the failure
+    // handling below - not reaching a daemon at all is already a normal,
+    // non-fatal outcome this feature is layered on top of).
+    g_dbus_connection_call(connection_, "org.freedesktop.Notifications",
+        "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify",
+        g_variant_new("(susssasa{sv}i)",
+            "FeatherRPC",                                                             // app_name
+            static_cast<guint32>(0),                                                  // replaces_id
+            "",                                                                       // app_icon
+            "FeatherRPC",                                                             // summary
+            "FeatherRPC is running. Right-click the tray icon to set your Discord "
+            "Application ID.",                                                        // body
+            &actionsBuilder,                                                          // actions
+            &hintsBuilder,                                                            // hints
+            static_cast<gint32>(-1)),                                                 // expire_timeout
+        G_VARIANT_TYPE("(u)"), G_DBUS_CALL_FLAGS_NONE, -1, nullptr,
+        [](GObject* source, GAsyncResult* res, gpointer) {
+            GError* error = nullptr;
+            GVariant* result = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &error);
+            if (!result) {
+                // Not fatal - most likely no org.freedesktop.Notifications
+                // daemon is running (e.g. a bare/minimal session), which is
+                // no worse than the silent-no-notification status quo this
+                // feature is layered on top of.
+                core::Log::Write(
+                    std::string("[warn] org.freedesktop.Notifications.Notify failed: ")
+                    + (error ? error->message : "unknown error"));
+                g_clear_error(&error);
+                return;
+            }
+            g_variant_unref(result);
+        },
+        nullptr);
+}
+
 void SniTray::PostStatusUpdate(const std::string& text) {
     // Ownership transfers to whichever main-loop iteration handles the
     // idle callback - freed there, mirroring the Windows tray's

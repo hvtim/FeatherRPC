@@ -51,6 +51,16 @@ public:
 
     void SetInitialState(const core::AppConfig& config, bool startAtLogin);
 
+    // One-shot desktop notification via org.freedesktop.Notifications.Notify
+    // over the existing session-bus connection_ (the standard libnotify
+    // D-Bus interface, called directly - no libnotify linked). Intended to
+    // be called once, right after Create(), when the caller has determined
+    // this is a first run with no Discord Application ID configured yet -
+    // see main_linux.cpp. Safe to call even if Create() failed to reach a
+    // notification daemon; failures are logged as non-fatal warnings, same
+    // as RegisterWithWatcher()'s pattern for a watcher-less desktop.
+    void ShowFirstRunNotification();
+
     // Safe to call from any thread - marshals onto the GLib main loop via
     // g_idle_add, the Linux equivalent of the Windows tray's PostMessage
     // marshaling.
