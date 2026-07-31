@@ -6,3 +6,5 @@
 - [Building.md](Building.md) - building from source, all platforms.
 - [KnownIssues.md](KnownIssues.md) - verification gaps, deliberate scope
   limits, and fixed-but-noteworthy bugs.
+- [Releasing.md](Releasing.md) - asset naming convention and release notes
+  template for cutting a release.
