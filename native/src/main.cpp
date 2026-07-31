@@ -151,7 +151,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     // third copy of the placeholder string (see AppConfig.h and
     // PresenceEngine.cpp's kPlaceholderClientId).
     if (config.clientId == core::AppConfig{}.clientId) {
-        tray.ShowFirstRunBalloon();
+        tray.ScheduleFirstRunBalloon();
     }
 
     tray.OnConfigChanged = [&](const core::AppConfig& newConfig) {
