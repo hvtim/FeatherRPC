@@ -17,7 +17,7 @@ architectures.
 
 | Asset | Before | After |
 |---|---|---|
-| Windows installer | `-windows-x64-Installer.exe` / `-arm64-Installer.exe` (two files) | `-windows-installer.exe` (one file, combined - see #30) |
+| Windows installer | `-windows-x64-Installer.exe` / `-arm64-Installer.exe` (two files) | `-windows-installer.exe` (one combined file, auto-detects CPU at install time - #30) |
 | Windows zip | `-windows-x64.zip` / `-arm64.zip` | unchanged, already compliant |
 | Linux archive | `-linux-x64.zip` | `-linux-x86_64.tar.gz` (format change - see below) |
 | macOS DMG | `-macos-universal.dmg` | unchanged, already compliant |
@@ -27,12 +27,13 @@ architectures.
 
 ### Windows installer
 
-`makensis /DAPP_DIR=<path> /DVERSION=<version> /DARCH=x64|arm64
-installer\windows\installer.nsi` - see the header comment in
-`installer/windows/installer.nsi`. The script's `OutFile` still emits the
-Before naming (two files, `x64`/`arm64`); combining into a single
-`-windows-installer.exe` is tracked separately in #30. Until that lands,
-release the two files under their current names.
+`makensis /DAPP_DIR_X64=<path to x64 build> /DAPP_DIR_ARM64=<path to
+arm64 build> /DVERSION=<version> installer\windows\installer.nsi` - see
+the header comment in `installer/windows/installer.nsi`. Produces a
+single `FeatherRPC-<version>-windows-installer.exe` that embeds both
+architectures' binaries and picks the matching pair at install time via
+native CPU detection (`x64.nsh`) - no more separate `x64`/`arm64`
+installer downloads.
 
 ### Windows zip
 
