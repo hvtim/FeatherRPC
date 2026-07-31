@@ -48,6 +48,12 @@ SetCompressor /SOLID lzma
 !define MUI_UNICON "..\..\assets\icon.ico"
 !define MUI_ABORTWARNING
 
+; Overrides MUI2's default Welcome text, which recommends closing other
+; applications "to update relevant system files without having to reboot" -
+; doesn't apply here: this installer runs at user privilege, writes only to
+; %LOCALAPPDATA%\FeatherRPC and HKCU, and never touches shared/system files.
+!define MUI_WELCOMEPAGE_TEXT "This wizard will guide you through the installation of $(^NameDA).$\r$\n$\r$\nClick Next to continue."
+
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "..\..\LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
