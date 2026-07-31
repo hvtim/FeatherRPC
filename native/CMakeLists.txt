@@ -57,6 +57,7 @@ if(WIN32)
         Uuid       # CLSID_ShellLink/IID_IShellLinkW/IID_IPersistFile definitions
         Winhttp    # album art lookup
         WindowsApp # C++/WinRT runtime class activation (SMTC)
+        Propsys    # PropVariantToString (SmtcMediaSource's window-title app-name fallback)
     )
 
     # The manifest is embedded via resources.rc (resource ID 1, RT_MANIFEST) so
@@ -101,7 +102,7 @@ if(WIN32)
     )
 
     target_link_libraries(featherrpc-cli PRIVATE
-        Shell32 Ole32 Uuid WindowsApp
+        Shell32 Ole32 Uuid WindowsApp Propsys
     )
 
     # NOT "featherrpc" - Windows filesystems are case-insensitive, so that
