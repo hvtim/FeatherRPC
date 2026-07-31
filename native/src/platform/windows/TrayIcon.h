@@ -31,6 +31,14 @@ public:
     bool Create(HINSTANCE hInstance, const std::wstring& tooltip);
     void SetTooltip(const std::wstring& text);
 
+    // Shows a one-time classic balloon-tip notification confirming the
+    // app is running and pointing at the one required setup step
+    // (setting a Discord Application ID). main.cpp calls this once, right
+    // after the tray icon is created, only while config.clientId is still
+    // the placeholder default - never persisted, so it naturally stops
+    // showing once `appid set` has been used.
+    void ShowFirstRunBalloon();
+
     // Seeds the menu's checkable/radio state from the loaded config and
     // AutoLaunch state - call once after Create(), before showing the menu.
     void SetInitialState(const core::AppConfig& config, bool startAtLogin);
