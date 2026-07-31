@@ -33,6 +33,7 @@
 
 !include "MUI2.nsh"
 !include "x64.nsh"
+!include "ShortcutAumid.nsh"
 
 Name "FeatherRPC"
 OutFile "..\..\FeatherRPC-${VERSION}-windows-installer.exe"
@@ -99,6 +100,12 @@ Section "FeatherRPC" SecMain
 
   CreateDirectory "$SMPROGRAMS"
   CreateShortcut "$SMPROGRAMS\FeatherRPC.lnk" "$INSTDIR\FeatherRPC.exe"
+  ; Must match SetCurrentProcessExplicitAppUserModelID() in main.cpp, or
+  ; the WinRT toast-notification permission check (ToastPermission.cpp)
+  ; can't resolve an identity for this app at all. CreateShortcut itself
+  ; has no native AppUserModelId parameter - this has to be set as a
+  ; separate step (see ShortcutAumid.nsh).
+  !insertmacro SetShortcutAppUserModelId "$SMPROGRAMS\FeatherRPC.lnk" "FeatherRPC.TrayApp"
 
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayName" "FeatherRPC"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
@@ -112,10 +119,12 @@ SectionEnd
 
 Section "Start at login" SecAutostart
   CreateShortcut "$SMSTARTUP\FeatherRPC.lnk" "$INSTDIR\FeatherRPC.exe"
+  !insertmacro SetShortcutAppUserModelId "$SMSTARTUP\FeatherRPC.lnk" "FeatherRPC.TrayApp"
 SectionEnd
 
 Section /o "Desktop shortcut" SecDesktop
   CreateShortcut "$DESKTOP\FeatherRPC.lnk" "$INSTDIR\FeatherRPC.exe"
+  !insertmacro SetShortcutAppUserModelId "$DESKTOP\FeatherRPC.lnk" "FeatherRPC.TrayApp"
 SectionEnd
 
 Section "Uninstall"

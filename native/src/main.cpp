@@ -17,6 +17,7 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 
 #include <cstdio>
 #include <memory>
@@ -71,6 +72,12 @@ bool HasNoTrayFlag() {
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
+    // Needed for the WinRT toast-notification permission check
+    // (ToastPermission.cpp, used by TrayIcon's first-run balloon) to work
+    // at all - must match the AppUserModelID set on the Start Menu
+    // shortcut in installer.nsi's CreateShortcut call.
+    SetCurrentProcessExplicitAppUserModelID(L"FeatherRPC.TrayApp");
+
     bool noTray = HasNoTrayFlag();
     AttachDebugConsole();
 

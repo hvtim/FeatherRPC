@@ -34,6 +34,7 @@ if(WIN32)
         src/platform/windows/WinHttpAlbumArtLookup.cpp
         src/platform/windows/ShellLinkAutoLaunch.cpp
         src/platform/windows/TrayIcon.cpp
+        src/platform/windows/ToastPermission.cpp
         src/platform/windows/TextPrompt.cpp
         src/platform/windows/DarkMode.cpp
         src/platform/windows/DaemonSignal.cpp
@@ -56,12 +57,11 @@ if(WIN32)
         Shell32 User32 Ole32 Dwmapi UxTheme Comctl32
         Uuid       # CLSID_ShellLink/IID_IShellLinkW/IID_IPersistFile definitions
         Winhttp    # album art lookup
-        WindowsApp # C++/WinRT runtime class activation (SMTC)
+        WindowsApp # C++/WinRT runtime class activation (SMTC, ToastNotificationManager)
         Propsys    # PropVariantToString (SmtcMediaSource's app-name resolution)
         Shlwapi    # SHLoadIndirectString (SmtcMediaSource's RelaunchDisplayNameResource resolution)
         Version    # GetFileVersionInfoW/VerQueryValueW (SmtcMediaSource's process-version-info app-name fallback)
         Imm32      # ImmAssociateContext (TrayIcon's window - suppresses the Emoji-panel popup on right-click)
-        Advapi32   # RegGetValueW (TrayIcon's notifications-disabled fallback check)
     )
 
     # The manifest is embedded via resources.rc (resource ID 1, RT_MANIFEST) so
