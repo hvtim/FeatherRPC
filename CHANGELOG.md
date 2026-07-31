@@ -11,6 +11,8 @@ SemVer starting at 0.1.0.
 
 ## [Unreleased]
 
+- Relicensed from MIT to GPL-3.0.
+
 Windows now ships a real installer
 (`FeatherRPC-<version>-windows-x64-Installer.exe`/`-arm64-Installer.exe`,
 built with NSIS) alongside the existing zip - same per-user install under

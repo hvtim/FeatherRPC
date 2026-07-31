@@ -136,3 +136,12 @@ Full detail in [docs/KnownIssues.md](docs/KnownIssues.md). Headlines:
 - No Windows *service* here - Session 0 isolation blocks access to the
   interactive user's iTunes/SMTC session.
 - No code signing on any platform.
+
+## License
+
+GPL-3.0. See [LICENSE](LICENSE).
+
+[native/third_party/nlohmann/json.hpp](native/third_party/nlohmann/json.hpp)
+is a bundled third-party dependency and remains under its own MIT license
+(see the notice at the top of that file) - relicensing FeatherRPC's own
+code doesn't relicense code this project didn't write.
