@@ -181,6 +181,10 @@ void TrayIcon::SetTooltip(const std::wstring& text) {
     Shell_NotifyIconW(NIM_MODIFY, &nid_);
 }
 
+void TrayIcon::ScheduleFirstRunBalloon() {
+    SetTimer(hwnd_, kFirstRunBalloonTimerId, 1500, nullptr);
+}
+
 void TrayIcon::ShowFirstRunBalloon() {
     // A separate copy, not a mutation of nid_ - nid_ is shared with every
     // other NIM_MODIFY call (SetTooltip() alone fires every poll interval),
@@ -275,6 +279,12 @@ LRESULT TrayIcon::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             }
             return 0;
         }
+        case WM_TIMER:
+            if (wParam == kFirstRunBalloonTimerId) {
+                KillTimer(hwnd, kFirstRunBalloonTimerId);
+                ShowFirstRunBalloon();
+            }
+            return 0;
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;

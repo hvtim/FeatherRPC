@@ -31,13 +31,21 @@ public:
     bool Create(HINSTANCE hInstance, const std::wstring& tooltip);
     void SetTooltip(const std::wstring& text);
 
-    // Shows a one-time classic balloon-tip notification confirming the
-    // app is running and pointing at the one required setup step
-    // (setting a Discord Application ID). main.cpp calls this once, right
-    // after the tray icon is created, only while config.clientId is still
-    // the placeholder default - never persisted, so it naturally stops
+    // Schedules the one-time first-run balloon-tip notification (see
+    // ShowFirstRunBalloon() below) a short delay from now, rather than
+    // showing it immediately. main.cpp calls this once, right after the
+    // tray icon is created, only while config.clientId is still the
+    // placeholder default - never persisted, so it naturally stops
     // showing once `appid set` has been used.
-    void ShowFirstRunBalloon();
+    //
+    // The delay matters: on a genuinely fresh install (this icon has
+    // never existed on this machine before), a balloon fired in the same
+    // instant as NIM_ADD can be silently dropped - Explorer hasn't
+    // finished "settling" a brand-new notification-area icon yet. Not an
+    // issue on a machine where this icon has already run many times
+    // before (already settled), which is why this didn't reproduce
+    // during development/testing on an already-used install.
+    void ScheduleFirstRunBalloon();
 
     // Seeds the menu's checkable/radio state from the loaded config and
     // AutoLaunch state - call once after Create(), before showing the menu.
@@ -83,11 +91,13 @@ private:
     static constexpr UINT WM_TRAYICON = WM_APP + 1;
     static constexpr UINT WM_STATUSUPDATE = WM_APP + 2;
     static constexpr UINT WM_MEDIASOURCESUPDATE = WM_APP + 3;
+    static constexpr UINT_PTR kFirstRunBalloonTimerId = 1;
 
     static LRESULT CALLBACK WndProcThunk(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     void ShowContextMenu();
+    void ShowFirstRunBalloon();
 
     // Builds menu_/sourceMenu_/artMenu_/pollMenu_ once, for the whole life
     // of the tray icon - see menu_'s comment for why. Only call once, from
