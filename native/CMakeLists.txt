@@ -61,6 +61,7 @@ if(WIN32)
         Shlwapi    # SHLoadIndirectString (SmtcMediaSource's RelaunchDisplayNameResource resolution)
         Version    # GetFileVersionInfoW/VerQueryValueW (SmtcMediaSource's process-version-info app-name fallback)
         Imm32      # ImmAssociateContext (TrayIcon's window - suppresses the Emoji-panel popup on right-click)
+        Advapi32   # RegGetValueW (TrayIcon's notifications-disabled fallback check)
     )
 
     # The manifest is embedded via resources.rc (resource ID 1, RT_MANIFEST) so
