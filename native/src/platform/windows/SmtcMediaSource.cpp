@@ -12,19 +12,24 @@
 #include <initguid.h>
 #include <propkey.h>
 
-// Declared in shellapi.h, but that header conflicts with the C++/WinRT
-// headers above when both land in one translation unit (redefinition
-// errors deep in shellapi.h's own unrelated declarations) - it's a plain
-// Shell32 export, so just forward-declare it instead of pulling in the
-// whole header for this one function.
+#include <winver.h>
+
+// Declared in shellapi.h/shlwapi.h, but those headers conflict with the
+// C++/WinRT headers above when both land in one translation unit
+// (redefinition errors deep in their own unrelated declarations) - both are
+// plain Shell32/Shlwapi exports, so just forward-declare them instead of
+// pulling in the whole header for one function each.
 extern "C" __declspec(dllimport) HRESULT __stdcall SHGetPropertyStoreForWindow(
     HWND hwnd, REFIID riid, void** ppv);
+extern "C" __declspec(dllimport) HRESULT __stdcall SHLoadIndirectString(
+    PCWSTR pszSource, PWSTR pszOutBuf, UINT cchOutBuf, void** ppvReserved);
 
 #include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 using namespace winrt::Windows::Media::Control;
 
@@ -57,25 +62,6 @@ std::string PrettifyAppId(const std::string& appId) {
     return name;
 }
 
-// Packaged (UWP) AUMIDs look like "Publisher.App_8wekyb3d8bbwe!AppId" -
-// always contain a letter outside a-f or a separator, so PrettifyAppId
-// already reads fine. Some Win32 apps (observed with LibreWolf) instead
-// register a per-install AUMID that's just a random hex string with no
-// human meaning at all - that's what this heuristic catches, so those
-// fall through to the window-title lookup below instead.
-bool LooksLikeOpaqueId(const std::string& appId) {
-    std::string name = appId;
-    const std::string suffix = ".exe";
-    if (name.size() >= suffix.size() &&
-        _stricmp(name.substr(name.size() - suffix.size()).c_str(), suffix.c_str()) == 0) {
-        name.resize(name.size() - suffix.size());
-    }
-    if (name.size() < 8) {
-        return false;
-    }
-    return std::all_of(name.begin(), name.end(), [](char c) { return std::isxdigit(static_cast<unsigned char>(c)); });
-}
-
 // Most apps' main window title ends in " - AppName" / " — AppName" (browsers,
 // editors, etc. all follow this convention for taskbar/Alt+Tab clarity) -
 // take the trailing segment rather than the whole title, which would
@@ -93,6 +79,9 @@ std::string AppNameFromWindowTitle(const std::string& title) {
 struct EnumContext {
     const wchar_t* targetAumid;
     std::wstring foundTitle;
+    std::wstring relaunchDisplayNameResource;
+    DWORD ownerProcessId = 0;
+    bool matched = false; // true once any window with this AUMID has been seen, even titleless
 };
 
 BOOL CALLBACK FindWindowByAumidProc(HWND hwnd, LPARAM lParam) {
@@ -114,6 +103,26 @@ BOOL CALLBACK FindWindowByAumidProc(HWND hwnd, LPARAM lParam) {
         }
     }
     PropVariantClear(&prop);
+
+    // Only capture resolver data (RelaunchDisplayNameResource, owning
+    // process) from the first AUMID-matching window seen - regardless of
+    // whether it turns out to have a usable title below. Both of these are
+    // process-scoped, not window-scoped, so it doesn't matter which of the
+    // process's windows this happens to be.
+    if (matched && !ctx->matched) {
+        PROPVARIANT nameProp;
+        PropVariantInit(&nameProp);
+        if (SUCCEEDED(store->GetValue(PKEY_AppUserModel_RelaunchDisplayNameResource, &nameProp))) {
+            wchar_t nameBuffer[512] = {};
+            if (SUCCEEDED(PropVariantToString(nameProp, nameBuffer, ARRAYSIZE(nameBuffer)))) {
+                ctx->relaunchDisplayNameResource = nameBuffer;
+            }
+        }
+        PropVariantClear(&nameProp);
+
+        GetWindowThreadProcessId(hwnd, &ctx->ownerProcessId);
+        ctx->matched = true;
+    }
     store->Release();
 
     if (!matched) {
@@ -133,19 +142,124 @@ BOOL CALLBACK FindWindowByAumidProc(HWND hwnd, LPARAM lParam) {
     return TRUE;
 }
 
-// Falls back to PrettifyAppId(appId) if no matching window is found (or
-// its title is empty) - e.g. the session's app has no visible top-level
-// window at all right now.
+// PKEY_AppUserModel_RelaunchDisplayNameResource may be a plain string or an
+// indirect resource reference ("@app.exe,-123") - SHLoadIndirectString
+// handles both (a literal string passes through unchanged), so there's no
+// need to detect which form it is first.
+std::string ResolveIndirectString(const std::wstring& value) {
+    if (value.empty()) {
+        return {};
+    }
+    wchar_t buffer[512] = {};
+    if (FAILED(SHLoadIndirectString(value.c_str(), buffer, ARRAYSIZE(buffer), nullptr))) {
+        return {};
+    }
+    return NarrowFromWide(buffer);
+}
+
+// Reads the owning process's own embedded version info (what Explorer/Task
+// Manager show as "Description") - authoritative, and unlike a window
+// title, doesn't depend on *which* of the process's windows got matched by
+// AUMID, since it's a property of the process/exe, not any one window.
+std::string DisplayNameFromProcessVersionInfo(DWORD processId) {
+    if (processId == 0) {
+        return {};
+    }
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
+    if (!process) {
+        return {};
+    }
+
+    wchar_t path[MAX_PATH] = {};
+    DWORD pathLen = ARRAYSIZE(path);
+    bool ok = QueryFullProcessImageNameW(process, 0, path, &pathLen);
+    CloseHandle(process);
+    if (!ok) {
+        return {};
+    }
+
+    DWORD handle = 0;
+    DWORD size = GetFileVersionInfoSizeW(path, &handle);
+    if (size == 0) {
+        return {};
+    }
+
+    std::vector<BYTE> buffer(size);
+    if (!GetFileVersionInfoW(path, handle, size, buffer.data())) {
+        return {};
+    }
+
+    struct LangCodepage { WORD language; WORD codepage; };
+    LangCodepage* translations = nullptr;
+    UINT translationsBytes = 0;
+    if (!VerQueryValueW(buffer.data(), L"\\VarFileInfo\\Translation",
+                         reinterpret_cast<void**>(&translations), &translationsBytes) ||
+        !translations || translationsBytes < sizeof(LangCodepage)) {
+        return {};
+    }
+
+    auto queryField = [&](const wchar_t* fieldName) -> std::string {
+        wchar_t subBlock[64];
+        swprintf_s(subBlock, L"\\StringFileInfo\\%04x%04x\\%s",
+                   translations[0].language, translations[0].codepage, fieldName);
+        void* value = nullptr;
+        UINT valueLenChars = 0;
+        if (!VerQueryValueW(buffer.data(), subBlock, &value, &valueLenChars) || !value || valueLenChars == 0) {
+            return {};
+        }
+        // valueLenChars includes the terminating null per VerQueryValueW's docs - trim it.
+        size_t len = valueLenChars;
+        auto* text = static_cast<const wchar_t*>(value);
+        while (len > 0 && text[len - 1] == L'\0') {
+            --len;
+        }
+        return NarrowFromWide(std::wstring_view(text, len));
+    };
+
+    std::string description = queryField(L"FileDescription");
+    if (!description.empty()) {
+        return description;
+    }
+    return queryField(L"ProductName");
+}
+
+// Resolution order, always attempted regardless of what the AUMID string
+// looks like (an earlier version gated this behind an "is this AUMID all
+// hex" heuristic - dropped because it's wrong for any opaque AUMID that
+// doesn't happen to be pure hex, e.g. Vivaldi's "Vivaldi.<random>" shape):
+//   1. PKEY_AppUserModel_RelaunchDisplayNameResource - the actual property
+//      apps set to declare their own Start-menu/taskbar display name.
+//   2. The owning process's own embedded FileDescription/ProductName.
+//   3. The window-title heuristic (AppNameFromWindowTitle) - kept as a
+//      lower-priority fallback for apps that set neither property above.
+//   4. PrettifyAppId(appId) on the raw AUMID - final fallback.
 std::string ResolveDisplayNameForAppId(const std::string& appId) {
     std::wstring wideAumid = WideFromNarrow(appId);
-    EnumContext ctx{wideAumid.c_str(), {}};
+    EnumContext ctx{wideAumid.c_str(), {}, {}, 0, false};
     EnumWindows(FindWindowByAumidProc, reinterpret_cast<LPARAM>(&ctx));
 
-    if (ctx.foundTitle.empty()) {
-        return PrettifyAppId(appId);
+    if (!ctx.matched) {
+        return PrettifyAppId(appId); // nothing currently declares this AUMID at all
     }
-    std::string name = AppNameFromWindowTitle(NarrowFromWide(ctx.foundTitle));
-    return name.empty() ? PrettifyAppId(appId) : name;
+
+    std::string name = ResolveIndirectString(ctx.relaunchDisplayNameResource);
+    if (!name.empty()) {
+        return name;
+    }
+
+    name = DisplayNameFromProcessVersionInfo(ctx.ownerProcessId);
+    if (!name.empty()) {
+        return name;
+    }
+
+    if (!ctx.foundTitle.empty()) {
+        name = AppNameFromWindowTitle(NarrowFromWide(ctx.foundTitle));
+        if (!name.empty()) {
+            return name;
+        }
+    }
+
+    return PrettifyAppId(appId);
 }
 
 // Microsoft's own guidance for GlobalSystemMediaTransportControlsSessionManager
@@ -169,14 +283,12 @@ GlobalSystemMediaTransportControlsSessionManager GetSessionManager() {
 // GetAvailableSources() runs on a dedicated background thread every time
 // the right-click menu is opened (see TrayIcon's media-source refresh
 // thread) - on a desktop with many open windows, EnumWindows + a
-// property-store query per window still adds up across repeated calls.
-// Caching by AUMID means that cost is paid at most once per session per
-// process lifetime instead of on every refresh.
+// property-store/process/version-info query per window still adds up
+// across repeated calls. Caching by AUMID means that cost is paid at most
+// once per session per process lifetime instead of on every refresh -
+// resolution is always attempted (no shape-based pre-filter on the AUMID),
+// since the cache already amortizes the one-time cost per app.
 std::string DisplayNameForAppId(const std::string& appId) {
-    if (!LooksLikeOpaqueId(appId)) {
-        return PrettifyAppId(appId);
-    }
-
     static std::unordered_map<std::string, std::string> cache;
     auto it = cache.find(appId);
     if (it != cache.end()) {
