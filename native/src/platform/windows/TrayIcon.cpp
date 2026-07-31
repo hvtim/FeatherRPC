@@ -94,7 +94,14 @@ bool TrayIcon::Create(HINSTANCE hInstance, const std::wstring& tooltip) {
 
     // Loads (and rescales if needed) whichever embedded frame in icon.ico
     // best matches the tray's actual small-icon size, rather than
-    // decoding the largest frame and scaling it down.
+    // decoding the largest frame and scaling it down. icon.ico bakes an
+    // exact frame for every standard Windows display-scaling percentage
+    // (100%-350%), for rendering quality at whatever scale the user is
+    // on - NOT to avoid any loading cost: confirmed (optimize/windows-
+    // memory-footprint) that Windows' icon-loading APIs load the same
+    // WIC-based codec pipeline regardless of which API is called or
+    // whether the source frame is an exact match, so there's no cheaper
+    // path to take here.
     int cx = GetSystemMetrics(SM_CXSMICON);
     int cy = GetSystemMetrics(SM_CYSMICON);
     if (FAILED(LoadIconWithScaleDown(hInstance_, MAKEINTRESOURCEW(IDI_APP_ICON), cx, cy, &icon_))) {
