@@ -181,6 +181,20 @@ void TrayIcon::SetTooltip(const std::wstring& text) {
     Shell_NotifyIconW(NIM_MODIFY, &nid_);
 }
 
+void TrayIcon::ShowFirstRunBalloon() {
+    // A separate copy, not a mutation of nid_ - nid_ is shared with every
+    // other NIM_MODIFY call (SetTooltip() alone fires every poll interval),
+    // so setting NIF_INFO/szInfo directly on it would make those unrelated
+    // updates re-carry this same balloon text too, showing it again and
+    // again instead of once.
+    NOTIFYICONDATAW balloon = nid_;
+    balloon.uFlags |= NIF_INFO;
+    wcscpy_s(balloon.szInfoTitle, L"FeatherRPC");
+    wcscpy_s(balloon.szInfo, L"FeatherRPC is running. Right-click the tray icon to set your Discord Application ID.");
+    balloon.dwInfoFlags = NIIF_INFO;
+    Shell_NotifyIconW(NIM_MODIFY, &balloon);
+}
+
 void TrayIcon::PostStatusUpdate(const std::wstring& text) {
     // Ownership transfers to whichever thread handles WM_STATUSUPDATE
     // (always this window's own message-loop thread) - freed there.
