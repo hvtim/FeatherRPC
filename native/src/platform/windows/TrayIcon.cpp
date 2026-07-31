@@ -4,6 +4,7 @@
 #include "resource.h"
 
 #include <commctrl.h>
+#include <imm.h>
 
 #include <thread>
 
@@ -81,6 +82,16 @@ bool TrayIcon::Create(HINSTANCE hInstance, const std::wstring& tooltip) {
     if (!hwnd_) {
         return false;
     }
+
+    // This window never handles text input, but every top-level window
+    // gets a default Text Services Framework input context unless it
+    // explicitly opts out - and ShowContextMenu()'s SetForegroundWindow()
+    // call (needed so the popup menu dismisses correctly on click-away)
+    // makes this window briefly the foreground/focused window on every
+    // right-click. Windows 11 shows the "Emoji and more" tray hint icon
+    // whenever a focused window has an active input context, so without
+    // this, right-clicking the tray icon spuriously pops that icon up.
+    ImmAssociateContext(hwnd_, nullptr);
 
     EnableDarkModeForMenus(); // undocumented API risk - see its own comment
 
