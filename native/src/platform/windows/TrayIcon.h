@@ -5,8 +5,11 @@
 
 #include <windows.h>
 #include <shellapi.h>
+#include <condition_variable>
 #include <functional>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace nativeui {
@@ -27,6 +30,14 @@ public:
 
     bool Create(HINSTANCE hInstance, const std::wstring& tooltip);
     void SetTooltip(const std::wstring& text);
+
+    // Shows a one-time classic balloon-tip notification confirming the
+    // app is running and pointing at the one required setup step
+    // (setting a Discord Application ID). main.cpp calls this once, right
+    // after the tray icon is created, only while config.clientId is still
+    // the placeholder default - never persisted, so it naturally stops
+    // showing once `appid set` has been used.
+    void ShowFirstRunBalloon();
 
     // Seeds the menu's checkable/radio state from the loaded config and
     // AutoLaunch state - call once after Create(), before showing the menu.
@@ -61,20 +72,41 @@ public:
     std::function<void(std::wstring&)> OnEditCustomArtUrl;
     std::function<void(std::wstring&)> OnEditFallbackImageKey;
 
-    // Called synchronously right before the context menu is shown, to
-    // refresh the Media Source submenu against currently-active SMTC
-    // sessions. Should return quickly - runs on the UI thread.
+    // Refreshes the Media Source submenu against currently-active SMTC
+    // sessions. Called from a dedicated background thread (never the UI
+    // thread - see StartMediaSourcesRefreshThread()) shortly after each
+    // time the context menu is opened; the menu itself shows whatever was
+    // last fetched, updating from the *next* time it's opened onward.
     std::function<std::vector<core::MediaSourceInfo>()> OnRefreshMediaSources;
 
 private:
     static constexpr UINT WM_TRAYICON = WM_APP + 1;
     static constexpr UINT WM_STATUSUPDATE = WM_APP + 2;
+    static constexpr UINT WM_MEDIASOURCESUPDATE = WM_APP + 3;
 
     static LRESULT CALLBACK WndProcThunk(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     void ShowContextMenu();
-    HMENU BuildMenu();
+
+    // Builds menu_/sourceMenu_/artMenu_/pollMenu_ once, for the whole life
+    // of the tray icon - see menu_'s comment for why. Only call once, from
+    // Create().
+    void BuildMenuOnce();
+
+    // Applies current config_/startAtLogin_/mediaSources_ state (checked
+    // toggles, radio selections) onto the already-built menu_ in place -
+    // no allocation, no menu structure changes. Safe to call any time
+    // after BuildMenuOnce() has run.
+    void SyncMenuState();
+
+    // Clears and repopulates sourceMenu_'s items from mediaSources_ (the
+    // one submenu whose item count/content actually changes over time),
+    // then calls SyncMenuState() to reapply its radio selection. Called
+    // once from BuildMenuOnce() for the initial population, and again
+    // whenever a fresh media-source list arrives (WM_MEDIASOURCESUPDATE).
+    void RefreshSourceMenuItems();
+
     void HandleCommand(UINT id);
     void NotifyConfigChanged();
 
@@ -84,10 +116,41 @@ private:
     NOTIFYICONDATAW nid_{};
     UINT taskbarCreatedMsg_ = 0;
 
+    // Built once (BuildMenuOnce(), called from Create()) and destroyed
+    // once (the destructor), instead of every single right-click - the
+    // repeated CreatePopupMenu/AppendMenuW/DestroyMenu churn that used to
+    // happen on every click was measurably growing the process's working
+    // set under rapid clicking (heap allocator retaining freed memory
+    // rather than returning it to the OS). DestroyMenu(menu_) recursively
+    // destroys the three attached popup submenus too, so they don't need
+    // separate cleanup - kept as separate members (rather than looked up
+    // via GetSubMenu + a hardcoded position each time) so a future menu
+    // reordering can't silently break which submenu gets updated.
+    HMENU menu_ = nullptr;
+    HMENU sourceMenu_ = nullptr;
+    HMENU artMenu_ = nullptr;
+    HMENU pollMenu_ = nullptr;
+
     core::AppConfig config_;
     bool startAtLogin_ = false;
     std::vector<core::MediaSourceInfo> mediaSources_{{"iTunes", "iTunes"}};
     std::vector<int> pollIntervalPresetsMs_{1000, 2000, 5000, 10000};
+
+    // One long-lived background thread for the Media Source submenu's
+    // refresh, instead of spawning a new OS thread per right-click (see
+    // ShowContextMenu()'s comment - spawning per click was measurably
+    // leaking a little memory under rapid clicking, from thread/COM
+    // create+teardown overhead, even once the underlying WinRT deadlock
+    // itself was fixed). Same long-lived-worker-thread shape as
+    // PresenceEngine's own thread, which never showed this problem.
+    std::thread mediaSourcesRefreshThread_;
+    std::mutex mediaSourcesRefreshMutex_;
+    std::condition_variable mediaSourcesRefreshCv_;
+    bool mediaSourcesRefreshRequested_ = false;
+    bool mediaSourcesRefreshShouldExit_ = false;
+
+    void StartMediaSourcesRefreshThread();
+    void RequestMediaSourcesRefresh();
 };
 
 } // namespace nativeui

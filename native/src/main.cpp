@@ -144,6 +144,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     }
     tray.SetInitialState(config, autoLaunch.IsEnabled());
 
+    // Still on the placeholder default from a fresh install/config -
+    // nudge the tester that the app is actually running and point at the
+    // one required setup step. Compared against a default-constructed
+    // AppConfig rather than a hardcoded literal so this doesn't become a
+    // third copy of the placeholder string (see AppConfig.h and
+    // PresenceEngine.cpp's kPlaceholderClientId).
+    if (config.clientId == core::AppConfig{}.clientId) {
+        tray.ShowFirstRunBalloon();
+    }
+
     tray.OnConfigChanged = [&](const core::AppConfig& newConfig) {
         if (newConfig.trayEnabled != config.trayEnabled) {
             core::Log::Write("Tray icon preference changed - takes effect next launch.");

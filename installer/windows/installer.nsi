@@ -4,32 +4,38 @@
 ; Add/Remove Programs entry) behind a normal installer wizard instead of a
 ; batch script + PowerShell prompts.
 ;
+; This is a single combined installer for both x64 and arm64 - it embeds
+; both architectures' binaries and picks the matching pair at install time
+; via x64.nsh's native-CPU detection, so users don't have to pick the right
+; download themselves.
+;
 ; Build with makensis (bundled with NSIS: https://nsis.sourceforge.io/):
 ;
-;   makensis /DAPP_DIR="C:\full\path\to\native\build-release-x64\Release" /DVERSION=0.1.1 /DARCH=x64 installer\windows\installer.nsi
+;   makensis /DAPP_DIR_X64="C:\full\path\to\native\build-release-x64\Release" /DAPP_DIR_ARM64="C:\full\path\to\native\build-release-arm64\Release" /DVERSION=0.1.1 installer\windows\installer.nsi
 ;
-; APP_DIR must contain the already-built FeatherRPC.exe and
-; featherrpc-cli.exe, and must be an absolute path - NSIS resolves File
-; paths relative to this .nsi file's own directory, not the invocation
-; directory, so a relative APP_DIR silently resolves to the wrong place.
-; VERSION and ARCH are used for the output filename
-; (FeatherRPC-<VERSION>-windows-<ARCH>-Installer.exe); the same script
-; builds both x64 and arm64 installers. Output lands in the repo root.
+; APP_DIR_X64/APP_DIR_ARM64 must each contain the already-built
+; FeatherRPC.exe and featherrpc-cli.exe for that architecture, and must be
+; absolute paths - NSIS resolves File paths relative to this .nsi file's own
+; directory, not the invocation directory, so a relative APP_DIR silently
+; resolves to the wrong place. VERSION is used for the output filename
+; (FeatherRPC-<VERSION>-windows-installer.exe). Output lands in the repo
+; root.
 
-!ifndef APP_DIR
-!error "Pass /DAPP_DIR=<path to built FeatherRPC.exe/featherrpc-cli.exe>"
+!ifndef APP_DIR_X64
+!error "Pass /DAPP_DIR_X64=<path to built x64 FeatherRPC.exe/featherrpc-cli.exe>"
+!endif
+!ifndef APP_DIR_ARM64
+!error "Pass /DAPP_DIR_ARM64=<path to built arm64 FeatherRPC.exe/featherrpc-cli.exe>"
 !endif
 !ifndef VERSION
 !define VERSION "0.0.0"
 !endif
-!ifndef ARCH
-!define ARCH "x64"
-!endif
 
 !include "MUI2.nsh"
+!include "x64.nsh"
 
 Name "FeatherRPC"
-OutFile "..\..\FeatherRPC-${VERSION}-windows-${ARCH}-Installer.exe"
+OutFile "..\..\FeatherRPC-${VERSION}-windows-installer.exe"
 InstallDir "$LOCALAPPDATA\FeatherRPC"
 InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FeatherRPC" "InstallLocation"
 RequestExecutionLevel user
@@ -50,6 +56,7 @@ SetCompressor /SOLID lzma
 
 !define MUI_FINISHPAGE_RUN "$INSTDIR\FeatherRPC.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Start FeatherRPC now"
+!define MUI_FINISHPAGE_TEXT "FeatherRPC runs in the system tray - there's no window to open. Once started, it just works in the background; check the tray icon to confirm it's running."
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_UNPAGE_CONFIRM
@@ -68,8 +75,20 @@ FunctionEnd
 Section "FeatherRPC" SecMain
   SectionIn RO
   SetOutPath "$INSTDIR"
-  File "${APP_DIR}\FeatherRPC.exe"
-  File "${APP_DIR}\featherrpc-cli.exe"
+
+  ; Native CPU detection (not RunningX64/IsWow64 - those only tell you
+  ; whether the OS is 64-bit, not which 64-bit ISA it natively runs, which
+  ; is what decides whether the x64 binary needs emulation on ARM64).
+  ${If} ${IsNativeARM64}
+    File "${APP_DIR_ARM64}\FeatherRPC.exe"
+    File "${APP_DIR_ARM64}\featherrpc-cli.exe"
+  ${ElseIf} ${IsNativeAMD64}
+    File "${APP_DIR_X64}\FeatherRPC.exe"
+    File "${APP_DIR_X64}\featherrpc-cli.exe"
+  ${Else}
+    Abort "Unsupported CPU architecture - FeatherRPC requires Windows on x64 or ARM64."
+  ${EndIf}
+
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
   CreateDirectory "$SMPROGRAMS"

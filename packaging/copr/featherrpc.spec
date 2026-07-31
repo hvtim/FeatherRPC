@@ -3,7 +3,7 @@ Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Syncs now-playing media to Discord as a Rich Presence status
 
-License:        MIT
+License:        GPL-3.0-or-later
 URL:            https://github.com/hvtim/FeatherRPC
 Source0:        https://github.com/hvtim/FeatherRPC/archive/refs/tags/v%{version}/FeatherRPC-%{version}.tar.gz
 

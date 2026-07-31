@@ -10,6 +10,10 @@ namespace core {
 struct MediaSourceInfo {
     std::string id;
     std::string displayName;
+
+    bool operator==(const MediaSourceInfo& other) const {
+        return id == other.id && displayName == other.displayName;
+    }
 };
 
 // One already-selected source (iTunes, or one specific SMTC app) that
