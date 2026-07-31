@@ -1,6 +1,7 @@
 #include "TrayIcon.h"
 #include "DarkMode.h"
 #include "StringConvert.h"
+#include "ToastPermission.h"
 #include "core/Log.h"
 #include "resource.h"
 
@@ -190,25 +191,13 @@ void TrayIcon::ScheduleFirstRunBalloon() {
 // silently suppresses every toast/balloon system-wide when off, with no way
 // for Shell_NotifyIconW to report that back - confirmed live: a tester with
 // this toggle off saw Shell_NotifyIconW return TRUE and GetLastError() 0,
-// yet no balloon ever appeared. Checks the actual registry value Windows
-// itself uses for this toggle, so ShowFirstRunBalloon() can fall back to a
-// mechanism that isn't a "notification" at all and so isn't subject to it.
-static bool AreNotificationsEnabled() {
-    DWORD value = 1; // default to enabled if the key/value is missing entirely
-    DWORD size = sizeof(value);
-    LSTATUS status = RegGetValueW(HKEY_CURRENT_USER,
-        L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
-        L"ToastEnabled", RRF_RT_REG_DWORD, nullptr, &value, &size);
-    return status != ERROR_SUCCESS || value != 0;
-}
-
+// yet no balloon ever appeared. Falls back to a real dialog box instead,
+// which isn't routed through the notification system at all, so it's
+// unaffected by the toggle either way.
 void TrayIcon::ShowFirstRunBalloon() {
     const wchar_t* message = L"FeatherRPC is running. Right-click the tray icon to set your Discord Application ID.";
 
-    if (!AreNotificationsEnabled()) {
-        // A real dialog box, not a notification - immune to the toggle
-        // above entirely, since Windows doesn't route it through the
-        // notification system at all.
+    if (!platform_windows::AreNotificationsEnabled()) {
         MessageBoxW(hwnd_, message, L"FeatherRPC", MB_OK | MB_ICONINFORMATION);
         return;
     }
