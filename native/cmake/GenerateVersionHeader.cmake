@@ -1,10 +1,7 @@
-# Run as a `cmake -P` script-mode custom target on *every* build (see the
-# add_custom_target(generate_version ALL ...) call in CMakeLists.txt) -
-# not something that only reruns on a full reconfigure, since the git
-# commit hash can change between builds without anything CMake-relevant
-# changing (no CMakeLists.txt edit, no new/removed source file).
+# Runs on every build, not just reconfigure (see generate_version target
+# in CMakeLists.txt) - the git hash can change with no CMake-relevant change.
 #
-# Expected variables (passed via -D on the command line):
+# Variables (passed via -D):
 #   TEMPLATE  - path to Version.h.in
 #   DST       - path to the generated Version.h to produce
 #   SRC_DIR   - repo root to run `git` in
@@ -25,9 +22,6 @@ if(GIT_EXECUTABLE)
     if(GIT_RESULT EQUAL 0 AND NOT GIT_HASH_OUTPUT STREQUAL "")
         set(FEATHERRPC_GIT_HASH "${GIT_HASH_OUTPUT}")
     endif()
-    # A dirty working tree (uncommitted changes) matters for a dev build -
-    # a crash report citing a bare hash could otherwise point a maintainer
-    # at code that isn't actually what produced the crash.
     execute_process(
         COMMAND ${GIT_EXECUTABLE} status --porcelain
         WORKING_DIRECTORY ${SRC_DIR}
@@ -45,10 +39,7 @@ set(FEATHERRPC_VERSION "${VERSION}")
 
 configure_file(${TEMPLATE} ${DST}.tmp @ONLY)
 
-# Only overwrite the real header if content actually changed - avoids
-# forcing a rebuild of every translation unit that includes Version.h on
-# every single build when the hash hasn't moved (e.g. rerunning a build
-# with no new commits in between).
+# Only overwrite if content changed, to avoid forcing an unnecessary rebuild.
 set(SHOULD_COPY TRUE)
 if(EXISTS ${DST})
     file(READ ${DST} EXISTING_CONTENT)

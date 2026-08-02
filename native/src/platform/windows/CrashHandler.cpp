@@ -9,18 +9,12 @@
 #include <cstdint>
 #include <cstring>
 
-// Deliberately no DbgHelp/SymFromAddr anywhere in this file - a Release
-// build ships no PDB, and symbol lookup itself risks further faulting on
-// an already-corrupted process. Instead, each backtrace frame is resolved
-// to only "module name + offset from module base", which is enough to
-// symbolize later, offline, against the exact matching archived PDB (see
-// docs/Releasing.md's Symbol archiving section). Formatting below is
-// entirely hand-rolled (no snprintf/iostream) and writes go straight
-// through WriteFile with no intermediate heap allocation - not because
-// SEH filters are as restrictive as a POSIX signal handler, but because
-// the CRT heap lock may be held by the very thread that just faulted, and
-// any further heap operation (new/malloc, which snprintf/std::string can
-// trigger) risks deadlocking instead of ever producing a report at all.
+// No DbgHelp/SymFromAddr here - a Release build ships no PDB, and symbol
+// lookup risks faulting again on an already-corrupted process. Frames
+// resolve to module+offset only, symbolized later offline (see
+// docs/Releasing.md). No heap allocation anywhere (no snprintf/
+// std::string) - the CRT heap lock may be held by the thread that just
+// faulted, so new/malloc here risks deadlock instead of ever reporting.
 
 namespace platform_windows {
 
@@ -82,9 +76,6 @@ void WriteDec(unsigned long value, int minWidth = 0) {
     WriteRaw(buf, static_cast<size_t>(padded));
 }
 
-// Narrows a module's base file name (already stripped of its directory) to
-// ASCII, best-effort - module file names are ASCII in every real-world
-// case this matters for (nothing here needs to survive an exotic path).
 void WriteModuleBaseName(const wchar_t* path) {
     const wchar_t* base = path;
     for (const wchar_t* p = path; *p; ++p) {
@@ -101,25 +92,17 @@ void WriteModuleBaseName(const wchar_t* path) {
     WriteRaw(narrow);
 }
 
-// The first 1-2 frames are always this function's own call into
-// CaptureStackBackTrace, and several frames after that are the OS's own
-// exception-dispatch machinery (ntdll!KiUserExceptionDispatcher and
-// friends) - not a bug, just how a top-level SEH filter necessarily sees
-// the stack (the OS calls the filter as a nested call while the actual
-// faulting frame is still live further down). Confirmed against a real
-// symbolicated build: the genuine fault site reliably shows up a handful
-// of frames past those - when reading a real report, skip past the
-// CrashHandler.cpp/ntdll/KERNELBASE frames at the top to find it.
+// The first several frames are always this function's own call plus the
+// OS's exception-dispatch machinery, not a bug - skip past the
+// CrashHandler.cpp/ntdll/KERNELBASE frames at the top to find the real fault site.
 void WriteBacktrace() {
     void* frames[32] = {};
     USHORT count = CaptureStackBackTrace(0, 32, frames, nullptr);
     for (USHORT i = 0; i < count; ++i) {
         auto addr = reinterpret_cast<uintptr_t>(frames[i]);
         HMODULE module = nullptr;
-        // GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT: this must not take
-        // a new reference on the module - freeing it later would mean
-        // calling FreeLibrary from inside a crash filter, which this file
-        // avoids entirely.
+        // UNCHANGED_REFCOUNT: no new module reference, so nothing here ever
+        // needs to call FreeLibrary from inside a crash filter.
         if (GetModuleHandleExW(
                 GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                 reinterpret_cast<LPCWSTR>(addr), &module) &&
@@ -197,33 +180,23 @@ LONG WINAPI CrashFilter(EXCEPTION_POINTERS* info) {
         WriteRaw("\r\n-- Recent log lines (best-effort; a line may be torn if the crash landed mid-write) --\r\n");
         WriteRecentLog();
 
-        // Truncate anything left over from a shorter previous report -
-        // the handle was opened once at startup without truncating (so a
-        // crash from a *previous* session survives until the user's read
-        // it via Copy Diagnostic Info), so this is the only point at
-        // which old content is actually discarded, and only exactly up
-        // to this new report's length.
+        // Truncate to this report's length - the file wasn't opened with
+        // truncation so a previous session's crash survives until read.
         SetEndOfFile(g_crashFile);
         FlushFileBuffers(g_crashFile);
     }
 
-    // EXCEPTION_EXECUTE_HANDLER, not EXCEPTION_CONTINUE_SEARCH - this is
-    // already the top-level (last-chance) filter, so continuing search
-    // would just hand off to the OS's own "stopped working" dialog with
-    // no additional benefit; execute-handler lets the process exit
-    // cleanly once this report is on disk.
+    // This is the last-chance filter, so EXECUTE_HANDLER lets the process
+    // exit cleanly once the report is on disk, instead of CONTINUE_SEARCH
+    // just handing off to the OS's "stopped working" dialog.
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
 }  // namespace
 
 void InstallCrashHandler() {
-    // OPEN_ALWAYS, not CREATE_ALWAYS: must not truncate a crash report
-    // left behind by a previous session before this session's user has
-    // had a chance to read it via Copy Diagnostic Info. FILE_SHARE_READ
-    // so DiagnosticReport's normal std::ifstream read (from a completely
-    // separate handle, whenever Copy Diagnostic Info runs) never hits a
-    // sharing violation against this long-lived handle.
+    // OPEN_ALWAYS: don't truncate a previous session's unread crash report.
+    // FILE_SHARE_READ: let DiagnosticReport read it concurrently.
     g_crashFile = CreateFileW(core::GetCrashFilePath().c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
                                FILE_ATTRIBUTE_NORMAL, nullptr);
     SetUnhandledExceptionFilter(&CrashFilter);
