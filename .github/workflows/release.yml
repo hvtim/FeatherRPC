@@ -155,8 +155,14 @@ jobs:
           for ARCH in x64 arm64; do
             ZIP="FeatherRPC-$VERSION-windows-$ARCH.zip"
             [ -f "$ZIP" ] || { echo "::error::Missing $ZIP"; exit 1; }
-            for MEMBER in app/FeatherRPC.exe app/featherrpc-cli.exe install.ps1 install.bat uninstall.ps1 uninstall.bat; do
-              7z l "$ZIP" | grep -q "$MEMBER" || { echo "::error::$ZIP is missing $MEMBER"; exit 1; }
+            # 7z on Windows lists internal zip paths with backslashes
+            # (app\FeatherRPC.exe), not forward slashes - verified locally
+            # against a real zip built the same way this step builds one.
+            # grep -F (literal string, no regex) avoids both that and the
+            # unrelated trap of grep otherwise treating the backslash as
+            # an (unsupported) regex escape and silently dropping it.
+            for MEMBER in 'app\FeatherRPC.exe' 'app\featherrpc-cli.exe' install.ps1 install.bat uninstall.ps1 uninstall.bat; do
+              7z l "$ZIP" | grep -qF "$MEMBER" || { echo "::error::$ZIP is missing $MEMBER"; exit 1; }
             done
             PDBZIP="FeatherRPC-$VERSION-windows-$ARCH.pdb.zip"
             [ -f "$PDBZIP" ] || { echo "::error::Missing $PDBZIP"; exit 1; }
