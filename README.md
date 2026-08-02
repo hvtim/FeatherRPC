@@ -28,8 +28,7 @@ each platform before relying on this.
 3. Right-click the tray icon, paste the Application ID, and set any other
    preferences from the same menu (see [Tray menu](#tray-menu) below).
 
-The Discord desktop app has to be running - Rich Presence connects to it
-locally, not through the browser.
+The Discord desktop app has to be running.
 
 ## Install
 
@@ -96,16 +95,9 @@ Run the app itself with `--no-tray` for headless mode.
 
 ## How it works
 
-- Native C++, no runtime, no bundled GUI toolkit. Idle memory use is a
-  few megabytes.
-- Polls the selected media source every 2 seconds (COM for iTunes on
-  Windows, C++/WinRT SMTC for other Windows apps, MPRIS/D-Bus on Linux,
-  Scripting Bridge for Music.app on macOS or a MediaRemote-based
-  workaround for any other Mac app).
-- Sends a "Listening to" Rich Presence activity with a live progress bar,
-  over Discord's local IPC protocol.
-- Looks up cover art automatically (Apple's iTunes Search API, then
-  MusicBrainz + Cover Art Archive). See [docs/AlbumArt.md](docs/AlbumArt.md).
+- Native C++, no runtime. Idle memory use is a few megabytes.
+- Shows a "Listening to" status with a live progress bar.
+- Looks up cover art automatically. See [docs/AlbumArt.md](docs/AlbumArt.md).
 - Spotify is excluded - it has its own Discord integration.
 
 ## Known limitations
@@ -120,8 +112,7 @@ Full detail in [docs/KnownIssues.md](docs/KnownIssues.md). Headlines:
 - Linux tray rendering is confirmed on KDE Plasma 6; other desktop
   environments are untested.
 - Windows ARM64 compiles but has never run on real ARM64 hardware.
-- No Windows *service* here - Session 0 isolation blocks access to the
-  interactive user's iTunes/SMTC session.
+- No Windows service.
 - No code signing on any platform.
 
 ## License
