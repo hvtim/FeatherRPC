@@ -81,7 +81,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install NSIS
-        run: choco install nsis -y
+        run: |
+          choco install nsis -y
+          # choco's own PATH update doesn't propagate to a fresh shell
+          # process within the same job - add makensis's install dir to
+          # GITHUB_PATH explicitly so the next step can find it.
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
       - name: Configure and build x64
         run: |
@@ -286,7 +291,15 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
-          MIN_DMG_BYTES=1000000
+          # A loose backstop against a catastrophically empty dmg, not a
+          # tight expected-size guess - FeatherRPC is a deliberately
+          # lightweight native C++ app (no Qt/Electron), so a real dmg
+          # legitimately lands well under 1MB (confirmed: 817KB for
+          # v0.1.2-rc2). The content check right below (FeatherRPC.app +
+          # Applications symlink actually present inside) is the real
+          # correctness signal; this is just catching "basically nothing
+          # got written".
+          MIN_DMG_BYTES=100000
 
           DMG="FeatherRPC-$VERSION-macos-universal.dmg"
           [ -f "$DMG" ] || { echo "::error::Missing $DMG"; exit 1; }
