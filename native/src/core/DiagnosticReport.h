@@ -16,13 +16,9 @@ struct DiagnosticReportInputs {
     std::optional<std::string> lastCrashReportText; // contents of GetCrashFilePath(), if it exists
 };
 
-// Assembles the block of text the tray's "Copy Diagnostic Info" action puts
-// on the clipboard - the whole point is that a reporter pastes this one
-// block into the bug-report issue form's "Diagnostic Info" field instead of
-// manually transcribing version/platform/config into separate fields.
-// Platform-agnostic (no #ifdefs) - every platform-specific piece
-// (osDescription, mediaSourceLiveCheckText, log tail, crash file) is
-// gathered by the caller and passed in already-formatted.
+// Assembles the text the tray's "Copy Diagnostic Info" action puts on the
+// clipboard. Platform-agnostic - the caller gathers and formats every
+// platform-specific piece before passing it in.
 std::string BuildDiagnosticReport(const DiagnosticReportInputs& inputs);
 
 } // namespace core

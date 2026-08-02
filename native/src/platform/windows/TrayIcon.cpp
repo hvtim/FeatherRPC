@@ -324,9 +324,8 @@ void TrayIcon::BuildMenuOnce() {
     AppendMenuW(menu_, MF_STRING, CMD_TOGGLE_BROADCAST, L"Broadcast now playing to Discord");
     AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
 
-    // Settings - everything persistent/infrequently-accessed, kept out of
-    // the top-level menu. Media Source and Broadcast stay top-level since
-    // those are the frequently-toggled primary controls.
+    // Settings holds everything infrequently-accessed; Media Source and
+    // Broadcast stay top-level as the frequently-toggled controls.
     settingsMenu_ = CreatePopupMenu();
     AppendMenuW(settingsMenu_, MF_STRING, CMD_SET_APP_ID, L"Set Discord Application ID...");
     AppendMenuW(settingsMenu_, MF_STRING, CMD_TOGGLE_TRACK_NUMBER, L"Show track number");
@@ -355,16 +354,12 @@ void TrayIcon::BuildMenuOnce() {
     AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(settingsMenu_), L"Settings");
     AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
 
-    // Top-level, not buried in Settings - the one action that matters most
-    // for actually producing a bug report should be easy to find.
     AppendMenuW(menu_, MF_STRING, CMD_COPY_DIAGNOSTIC_INFO, L"Copy Diagnostic Info");
 
     AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu_, MF_STRING, CMD_EXIT, L"Exit");
 
-    // Every submenu above now exists, so it's safe for this to sync
-    // checked/radio state (including artMenu_/pollMenu_, which an earlier
-    // call couldn't safely touch before they existed).
+    // Every submenu now exists, so this can safely sync checked/radio state.
     RefreshSourceMenuItems();
 }
 

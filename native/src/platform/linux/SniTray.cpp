@@ -278,27 +278,13 @@ bool SniTray::Create() {
         return false;
     }
 
-    // Deferred to the first main-loop iteration via g_idle_add, NOT called
-    // synchronously here - confirmed by live reproduction on real hardware
-    // (a Fedora 44/GNOME desktop, not just WSL) that calling
-    // RefreshMediaSourcesAndRebuild() synchronously at this point crashes
-    // essentially every launch: it makes a *blocking* libdbus call
-    // (MprisMediaSource.cpp uses libdbus directly, not GDBus) while
-    // GDBusConnection's own internal worker thread (spun up by
-    // g_bus_get_sync() above) is still concurrently finishing its own
-    // setup - libdbus's blocking call pumps its own message loop while
-    // waiting, and that appears to race with GDBus's worker thread deep
-    // inside GLib's allocator (confirmed via ThreadSanitizer: a genuine
-    // g_malloc/g_free data race between the main thread and GDBus's
-    // "gdbus" worker thread). Deferring past Create() - to the first idle
-    // callback once the main loop is actually pumping, which still
-    // satisfies the "build once up front" goal below since it fires
-    // before any host has time to round-trip a real GetLayout call -
-    // sidesteps the race entirely without needing to fix libdbus/GDBus's
-    // own internals. See docs/KnownIssues.md for the fuller writeup.
-    //
-    // Build once up front so a host that calls GetLayout before ever
-    // sending AboutToShow (some do, to pre-render) still sees a real menu.
+    // Deferred, not called synchronously: calling this here races
+    // GDBusConnection's still-starting worker thread against
+    // MprisMediaSource's blocking libdbus call, deep in GLib's allocator
+    // (confirmed via ThreadSanitizer and live crashes on real hardware).
+    // Deferring past Create() to the first idle callback avoids the race
+    // while still building the menu before any host round-trips a real
+    // GetLayout call. See docs/KnownIssues.md.
     g_idle_add(InitialMediaRefreshThunk, this);
 
     RegisterWithWatcher();
@@ -316,28 +302,14 @@ void SniTray::ShowFirstRunNotification() {
         return;
     }
 
-    // Empty app_icon: same reasoning as IconName in GetSniProperty below -
-    // there's no icon theme to reliably resolve a name against (a bare
-    // AppImage run has none), and IconPixmap-style inline image data isn't
-    // an option for this call (Notify's app_icon parameter is a themed
-    // name or a file path string, not pixel data), so an empty string is
-    // the least-broken choice; the notification daemon falls back to its
-    // own generic icon.
-    //
-    // Empty actions array and hints dict: this is a plain informational
-    // popup, no default/alternate action and no urgency/category hint
-    // needed.
+    // Empty app_icon: no icon theme to reliably resolve against (a bare
+    // AppImage run has none); the daemon falls back to its generic icon.
     GVariantBuilder actionsBuilder;
     g_variant_builder_init(&actionsBuilder, G_VARIANT_TYPE("as"));
     GVariantBuilder hintsBuilder;
     g_variant_builder_init(&hintsBuilder, G_VARIANT_TYPE("a{sv}"));
 
-    // Async, not g_dbus_connection_call_sync - this runs once at startup,
-    // before the main loop is even pumping yet, so a slow-to-respond
-    // notification daemon would otherwise block app startup entirely for a
-    // notification that's best-effort in the first place (see the failure
-    // handling below - not reaching a daemon at all is already a normal,
-    // non-fatal outcome this feature is layered on top of).
+    // Async: a slow notification daemon must not block app startup.
     g_dbus_connection_call(connection_, "org.freedesktop.Notifications",
         "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify",
         g_variant_new("(susssasa{sv}i)",
@@ -355,10 +327,7 @@ void SniTray::ShowFirstRunNotification() {
             GError* error = nullptr;
             GVariant* result = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), res, &error);
             if (!result) {
-                // Not fatal - most likely no org.freedesktop.Notifications
-                // daemon is running (e.g. a bare/minimal session), which is
-                // no worse than the silent-no-notification status quo this
-                // feature is layered on top of.
+                // Not fatal - most likely no notification daemon running.
                 core::Log::Write(
                     std::string("[warn] org.freedesktop.Notifications.Notify failed: ")
                     + (error ? error->message : "unknown error"));
@@ -371,9 +340,7 @@ void SniTray::ShowFirstRunNotification() {
 }
 
 void SniTray::PostStatusUpdate(const std::string& text) {
-    // Ownership transfers to whichever main-loop iteration handles the
-    // idle callback - freed there, mirroring the Windows tray's
-    // heap-allocated PostMessage payload.
+    // Ownership transfers to the idle callback, which frees it.
     auto* payload = new StatusUpdatePayload{this, text};
     g_idle_add(ApplyStatusUpdateThunk, payload);
 }
@@ -381,23 +348,11 @@ void SniTray::PostStatusUpdate(const std::string& text) {
 int SniTray::RunMessageLoop() {
     loop_ = g_main_loop_new(nullptr, FALSE);
 
-    // Mode-agnostic daemon signaling (see DaemonSignal.h) needs the CLI's
-    // SIGHUP/SIGTERM/SIGINT to reach a *tray-mode* instance too, but the
-    // main thread here is busy running this loop, not blocked in
-    // sigwait() the way the headless path's DaemonWaitForSignal() is.
-    // g_unix_signal_add (glib-unix.h) is GLib's own signal-to-GSource
-    // integration: it lets the main loop dispatch the callback natively,
-    // on this thread, with no dedicated waiter thread and no g_idle_add
-    // hop required to get back onto it - the simplest fit given the tray
-    // already lives entirely on this loop after the SNI rewrite.
-    // SIGHUP keeps watching (G_SOURCE_CONTINUE) so every reload for the
-    // rest of the process's life keeps working, not just the first one.
+    // g_unix_signal_add dispatches natively on this loop - no dedicated
+    // waiter thread needed, unlike the headless path's sigwait().
     guint sigHupId = g_unix_signal_add(SIGHUP, OnSigHupThunk, this);
-    // SIGTERM/SIGINT already terminated the process by default disposition
-    // before this existed; routing them through the loop instead makes
-    // that quit path go through the same clean shutdown as the "Exit" menu
-    // item (engine.Stop() + pidfile removal in main_linux.cpp), which
-    // matters now that tray mode writes a pidfile at all.
+    // Routes SIGTERM/SIGINT through the same clean shutdown as Exit
+    // (engine.Stop() + pidfile removal), instead of default disposition.
     g_unix_signal_add(SIGTERM, OnSigQuitThunk, this);
     g_unix_signal_add(SIGINT, OnSigQuitThunk, this);
 
@@ -675,9 +630,6 @@ void SniTray::RebuildMenuTree() {
 
     addChild(rootMenu_).isSeparator = true;
 
-    // Settings submenu - everything persistent or infrequently touched
-    // lives here instead of cluttering the root menu, mirroring the
-    // Windows/macOS tray's own Settings reorg.
     MenuNode& settingsMenu = addChild(rootMenu_);
     settingsMenu.label = "Settings";
     settingsMenu.isSubmenu = true;

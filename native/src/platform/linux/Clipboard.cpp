@@ -17,10 +17,8 @@ namespace platform_linux {
 
 namespace {
 
-// Searches $PATH directly via access() rather than forking a shell to run
-// `command -v` - CopyToClipboard tries up to 3 of these in a row
-// (wl-copy/xclip/xsel), so the old approach meant up to 3 shell spawns on
-// every single "Copy Diagnostic Info" click.
+// access() instead of forking a shell to run `command -v` - avoids up to
+// 3 shell spawns per click (wl-copy/xclip/xsel are each tried in turn).
 bool CommandExists(const char* cmd) {
     const char* pathEnv = std::getenv("PATH");
     if (!pathEnv) {
@@ -47,22 +45,16 @@ bool CommandExists(const char* cmd) {
     return false;
 }
 
-// Wayland compositors generally still run an XWayland server, so $DISPLAY
-// alone isn't a reliable signal - $WAYLAND_DISPLAY is what every Wayland
-// session actually sets, and it's the standard way to tell which of the
-// two clipboard mechanisms is live.
+// $DISPLAY alone isn't reliable - XWayland sets it too. $WAYLAND_DISPLAY
+// is the standard signal for which clipboard mechanism is actually live.
 bool IsWayland() {
     const char* wayland = std::getenv("WAYLAND_DISPLAY");
     return wayland != nullptr && *wayland != '\0';
 }
 
-// Writing to a pipe/subprocess stdin whose reader has already gone away
-// raises SIGPIPE, which by default terminates the whole process - one bad
-// clipboard tool must not be able to take down the tray. Set once,
-// process-wide, the first time this file is used (thread-safe via C++11's
-// guaranteed-once static-local init); this app never wants the default
-// kill-on-broken-pipe behavior anywhere, so there's no need to scope this
-// more narrowly than "once, at startup."
+// Writing to a subprocess stdin whose reader is gone raises SIGPIPE,
+// which kills the process by default - one bad clipboard tool shouldn't
+// take down the tray.
 void EnsureSigpipeIgnored() {
     static bool once = [] {
         signal(SIGPIPE, SIG_IGN);
@@ -72,33 +64,18 @@ void EnsureSigpipeIgnored() {
 }
 
 // One attempt through the wl-copy -> xclip -> xsel -> file fallback
-// chain. Heap-allocated and threaded through as GSubprocess's own
-// user_data (see TryNextClipboardCommand/OnClipboardCommandDone), so its
-// lifetime is tied entirely to the pending async operation - it holds
-// nothing but its own copy of the report text and the remaining commands
-// to try, so it stays valid (and harmless to just never finish, if the
-// process exits mid-chain) regardless of SniTray's own lifetime.
+// chain. Threaded through as GSubprocess's user_data, so its lifetime is
+// tied to the pending async operation.
 struct ClipboardAttempt {
     std::string text;
     std::vector<std::string> remainingCommands;
 };
 
-// g_subprocess_communicate_async() only ever completes once the child has
-// actually exited (GLib docs: "Communicate with the subprocess until it
-// terminates, and all input and output has been completed") - correct
-// and desired for xclip/xsel, which exit promptly, but wl-copy is
-// *designed* to never exit, so waiting for that unconditionally would
-// mean the completion callback simply never fires for it: not a hang of
-// the main thread (this is still fully async), but the GSubprocess and
-// ClipboardAttempt would leak for as long as wl-copy keeps running, i.e.
-// indefinitely. A GCancellable tied to a short g_timeout_add() bounds
-// this: if the tool hasn't exited within kToolPatienceMs, cancel our own
-// wait - which, per GLib's own docs ("Cancelling @cancellable doesn't
-// kill the subprocess. Call g_subprocess_force_exit() if it is
-// desirable" - confirmed directly against gsubprocess.c before relying
-// on it), does NOT touch the child process at all, only abandons this
-// process's observation of it. wl-copy keeps running, undisturbed,
-// exactly as intended.
+// g_subprocess_communicate_async() only completes once the child exits -
+// fine for xclip/xsel, but wl-copy is designed to never exit, so the
+// callback would never fire and this would leak indefinitely. Bound the
+// wait with a GCancellable: cancelling it doesn't touch the child process
+// (confirmed against gsubprocess.c), it only abandons our own wait.
 constexpr guint kToolPatienceMs = 200;
 
 struct PendingCommand {
@@ -125,22 +102,14 @@ void WriteFallbackFile(const std::string& text) {
 
 gboolean OnCommandTimeout(gpointer userData) {
     auto* pending = static_cast<PendingCommand*>(userData);
-    // Zeroed before cancelling, not after: g_cancellable_cancel() may
-    // invoke OnClipboardCommandDone synchronously, re-entrantly, from
-    // within this very call - if that happens, it must see timeoutId==0
-    // and skip g_source_remove() on a source that's already in the
-    // middle of auto-removing itself via this function's own
-    // G_SOURCE_REMOVE return.
+    // Zeroed before cancelling: g_cancellable_cancel() may re-enter
+    // OnClipboardCommandDone synchronously, which must see timeoutId==0.
     pending->timeoutId = 0;
     g_cancellable_cancel(pending->cancellable);
     return G_SOURCE_REMOVE;
 }
 
 void OnClipboardCommandDone(GObject* sourceObject, GAsyncResult* result, gpointer userData) {
-    // Reconstructs ownership from the raw pointer handed to
-    // g_subprocess_communicate_async() below - safe because GIO
-    // guarantees a GAsyncReadyCallback fires exactly once per async call,
-    // so this is the single point this pending command is ever freed.
     auto* pending = static_cast<PendingCommand*>(userData);
     GSubprocess* subprocess = G_SUBPROCESS(sourceObject);
 
@@ -154,19 +123,11 @@ void OnClipboardCommandDone(GObject* sourceObject, GAsyncResult* result, gpointe
 
     bool treatAsSuccess;
     if (exitedForReal) {
-        // The tool genuinely exited before our patience window ran out -
-        // trust its real, GLib-reported exit status (the same signal
-        // pclose() used to give us, for the common case of a tool that
-        // does exit promptly).
         treatAsSuccess = g_subprocess_get_successful(subprocess);
     } else {
-        // Our own timeout cancelled the wait (or some other wait error
-        // occurred) - there's no trustworthy exit status either way.
-        // Cancelling never touches the child process itself (see the
-        // comment on kToolPatienceMs), so a tool that's still alive
-        // after our patience window - the expected, normal outcome for
-        // wl-copy - is treated as success: it launched, accepted the
-        // data, and hasn't crashed.
+        // Our timeout cancelled the wait - the tool is still running
+        // (expected for wl-copy) and untouched by the cancellation, so
+        // treat it as success.
         treatAsSuccess = true;
     }
     if (error) {
@@ -178,23 +139,11 @@ void OnClipboardCommandDone(GObject* sourceObject, GAsyncResult* result, gpointe
     delete pending;
 
     if (treatAsSuccess) {
-        return;  // chain ends here
+        return;
     }
-    // Real, verified failure - advance to the next candidate, or the file if none are left.
     TryNextClipboardCommand(std::move(attempt));
 }
 
-// Launches the front of attempt->remainingCommands via GSubprocess -
-// GLib's own async subprocess API, not hand-rolled fork()/pipe()/
-// waitpid(). gio-2.0 is already a hard, REQUIRED build dependency of this
-// binary (SniTray.cpp's GDBus-based tray), so this adds no new
-// dependency. GSubprocess is GLib's purpose-built answer to exactly this
-// problem - spawning a helper process from a GLib-main-loop, GDBus-using
-// app without ever blocking the loop or hand-managing SIGCHLD/zombie-
-// reaping - which is exactly the category of thing that caused two real
-// bugs in this area this session (the SniTray D-Bus startup race, then a
-// popen()/pclose() hang specifically on wl-copy - see
-// docs/KnownIssues.md).
 void TryNextClipboardCommand(std::unique_ptr<ClipboardAttempt> attempt) {
     if (attempt->remainingCommands.empty()) {
         WriteFallbackFile(attempt->text);
@@ -213,18 +162,15 @@ void TryNextClipboardCommand(std::unique_ptr<ClipboardAttempt> attempt) {
         if (error) {
             g_error_free(error);
         }
-        TryNextClipboardCommand(std::move(attempt));  // try the next candidate, or the file
+        TryNextClipboardCommand(std::move(attempt));
         return;
     }
 
     auto* pending = new PendingCommand{std::move(attempt), g_cancellable_new(), 0};
     pending->timeoutId = g_timeout_add(kToolPatienceMs, OnCommandTimeout, pending);
 
-    // stdin_buf is caller-owned per GLib's own docs ("the data is owned
-    // by the caller") - g_subprocess_communicate_async() takes its own
-    // reference internally, so unref'ing right after the call is
-    // correct, not a use-after-free. Verified directly against
-    // docs.gtk.org before relying on it.
+    // g_subprocess_communicate_async() takes its own reference on the
+    // input GBytes, so unref'ing right after is correct.
     GBytes* stdinBytes = g_bytes_new(pending->attempt->text.data(), pending->attempt->text.size());
     g_subprocess_communicate_async(subprocess, stdinBytes, pending->cancellable, OnClipboardCommandDone, pending);
     g_bytes_unref(stdinBytes);
