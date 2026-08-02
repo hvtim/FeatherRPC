@@ -59,6 +59,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+
           # Positional, not pattern-matched on the text "Unreleased" -
           # CHANGELOG.md has a second, historical "## [Unreleased]"
           # heading further down (a pre-rebrand section kept for the
@@ -68,10 +70,45 @@ jobs:
           # always the first one in the file, so just take everything
           # between the first "## [" heading and the second, regardless
           # of what either heading's text says.
-          awk '/^## \[/{count++} count==1 && !/^## \[/{print} count==2{exit}' CHANGELOG.md > release-notes.md
-          if [ ! -s release-notes.md ]; then
-            echo "(No CHANGELOG.md [Unreleased] entries found for this release.)" > release-notes.md
-          fi
+          RAW=$(awk '/^## \[/{count++} count==1 && !/^## \[/{print} count==2{exit}' CHANGELOG.md)
+
+          # Each CHANGELOG.md [Unreleased] bullet is written as
+          # "- [Tag] one or two line description", e.g. "- [Fixed] ...".
+          # Sort into Keep a Changelog's own section names - see
+          # docs/Releasing.md's "Writing CHANGELOG entries" section for
+          # the authoring convention this depends on.
+          declare -A SECTIONS
+          for tag in Added Changed Deprecated Removed Fixed Security; do
+            SECTIONS[$tag]=""
+          done
+
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^-\ \[([A-Za-z]+)\]\ (.*)$ ]]; then
+              tag="${BASH_REMATCH[1]}"
+              text="${BASH_REMATCH[2]}"
+              if [[ -n "${SECTIONS[$tag]+x}" ]]; then
+                SECTIONS[$tag]+="- $text"$'\n'
+              else
+                echo "::warning::Unrecognized CHANGELOG.md tag [$tag] - filed under Changed. Line: $line"
+                SECTIONS[Changed]+="- $text"$'\n'
+              fi
+            elif [ -n "$line" ]; then
+              echo "::warning::Untagged CHANGELOG.md [Unreleased] line, skipped from release notes: $line"
+            fi
+          done <<< "$RAW"
+
+          {
+            echo "**v$VERSION.**"
+            echo ""
+            for tag in Added Changed Deprecated Removed Fixed Security; do
+              if [ -n "${SECTIONS[$tag]}" ]; then
+                echo "## $tag"
+                printf '%s' "${SECTIONS[$tag]}"
+                echo ""
+              fi
+            done
+            echo "Full detail: [KnownIssues.md](https://github.com/hvtim/FeatherRPC/blob/main/docs/KnownIssues.md), [CHANGELOG.md](https://github.com/hvtim/FeatherRPC/blob/main/CHANGELOG.md)."
+          } > release-notes.md
 
       - name: Upload release notes
         uses: actions/upload-artifact@v4

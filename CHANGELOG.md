@@ -11,31 +11,15 @@ SemVer starting at 0.1.0.
 
 ## [Unreleased]
 
-- Relicensed from MIT to GPL-3.0.
-
-Windows now ships a real installer
-(`FeatherRPC-<version>-windows-x64-Installer.exe`/`-arm64-Installer.exe`,
-built with NSIS) alongside the existing zip - same per-user install under
-`%LOCALAPPDATA%\FeatherRPC`, Start Menu shortcut, optional autostart/desktop
-shortcut, and Add/Remove Programs entry, behind a normal installer wizard
-instead of a batch script and PowerShell prompts. See
-[installer/windows/installer.nsi](installer/windows/installer.nsi).
-
-- Release asset filenames now all carry the version, and the Windows
-  installer's own name says "Installer" so it isn't mistaken for the zip
-  (matches the `{app}-{version}-{os}-{arch}-Installer.exe` pattern OBS
-  Studio's releases use).
-- Discord Application ID setup moved out of the README's Install section
-  into its own OS-agnostic Usage section - it isn't an install step.
-- macOS gains a second, additional media source: "Now Playing (any app)",
-  alongside the existing Music.app (Scripting Bridge) source - selectable
-  from the tray's Media Source submenu or `featherrpc-cli mediasource set
-  MediaRemote`. Works around Apple's macOS 15.4+ `MediaRemote.framework`
-  entitlement lockdown via the vendored
-  [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter)
-  project; Spotify excluded, same as every other platform. Unverified on
-  real Mac hardware, like the rest of the macOS port - see
-  [docs/KnownIssues.md](docs/KnownIssues.md).
+- [Changed] Relicensed from MIT to GPL-3.0.
+- [Added] Windows installer (NSIS), alongside the existing zip.
+- [Changed] Release asset filenames now include the version.
+- [Changed] Discord Application ID setup moved into its own Usage section in the README.
+- [Added] macOS: new "Now Playing (any app)" media source, alongside Music.app.
+- [Added] Settings submenu, with Verbose Logging, Open App Directory, and Copy Diagnostic Info.
+- [Added] Crash handlers on all 3 platforms, writing a dedicated crash log.
+- [Fixed] Linux: rare tray-startup segfault from a D-Bus race.
+- [Fixed] Linux: Copy Diagnostic Info could freeze the tray when `wl-copy` was installed.
 
 ## [0.1.1] - 2026-07-27
 

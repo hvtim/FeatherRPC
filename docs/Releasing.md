@@ -189,14 +189,38 @@ first attempt:
 - Delete the RC tag and its GitHub prerelease once satisfied, then cut
   the real tag per "Cutting a release" above.
 
-## Release notes template
+## Writing CHANGELOG entries
 
-Reuses `CHANGELOG.md`'s own section names - it already commits to
-"loosely follows [Keep a Changelog](https://keepachangelog.com/)". Blank
-sections are omitted entirely, not shown-but-empty.
+The release workflow builds the GitHub Release notes automatically from
+`CHANGELOG.md`'s `[Unreleased]` section, sorting entries into [Keep a
+Changelog](https://keepachangelog.com/) sections - so every entry added
+under `[Unreleased]` must follow this exact format:
 
 ```markdown
-**vX.Y.Z.** One-sentence summary.
+- [Tag] One or two lines, purely descriptive.
+```
+
+`Tag` is one of `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`,
+`Security` - matching Keep a Changelog's own category names exactly
+(case-sensitive). A line that doesn't match this pattern is dropped from
+the generated release notes with a workflow warning, not silently
+included or guessed at.
+
+"Purely descriptive" means state *what* changed, not *why*, and not in
+comparison to anything else - save rationale, tradeoffs, and the full
+story for the PR description and commit message, which is where that
+context actually belongs and stays discoverable. The release notes are
+read by someone deciding whether to update, not someone reviewing the
+change.
+
+## Release notes template
+
+The workflow generates this automatically - shown here so you know what
+to expect, not as something to hand-assemble. Blank sections are omitted
+entirely, not shown-but-empty.
+
+```markdown
+**vX.Y.Z.**
 
 ## Added
 ## Changed
