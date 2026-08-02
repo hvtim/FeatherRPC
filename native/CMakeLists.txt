@@ -340,6 +340,31 @@ elseif(APPLE)
         "-framework Foundation"
     )
 
+    # `mediasource current` (MediaRemoteSource::GetCurrentBundleId) shells
+    # out to the same bundled adapter as the GUI target, resolved the same
+    # way (NSBundle mainBundle resourcePath - see MediaRemoteSource.mm).
+    # featherrpc-cli isn't a .app bundle, so that resolves to the
+    # directory containing the executable itself; a plain command-line
+    # tool has no Contents/Resources of its own to fall back on, so the
+    # adapter has to be copied next to the binary explicitly, same
+    # mediaremote-adapter/ layout as featherrpc-native's Resources/ above.
+    # install.sh mirrors this next to the installed ~/.local/bin/featherrpc-cli.
+    add_dependencies(featherrpc-cli MediaRemoteAdapter MediaRemoteAdapterTestClient)
+    add_custom_command(TARGET featherrpc-cli POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:featherrpc-cli>/mediaremote-adapter"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "${mediaremote_adapter_SOURCE_DIR}/bin/mediaremote-adapter.pl"
+            "$<TARGET_FILE_DIR:featherrpc-cli>/mediaremote-adapter/mediaremote-adapter.pl"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "$<TARGET_BUNDLE_DIR:MediaRemoteAdapter>"
+            "$<TARGET_FILE_DIR:featherrpc-cli>/mediaremote-adapter/MediaRemoteAdapter.framework"
+        COMMAND ${CMAKE_COMMAND} -E copy
+            "$<TARGET_FILE:MediaRemoteAdapterTestClient>"
+            "$<TARGET_FILE_DIR:featherrpc-cli>/mediaremote-adapter/MediaRemoteAdapterTestClient"
+        COMMENT "Bundling mediaremote-adapter next to featherrpc-cli"
+    )
+
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(DBUS REQUIRED dbus-1)
