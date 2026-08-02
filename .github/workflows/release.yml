@@ -100,18 +100,6 @@ jobs:
           {
             echo "**v$VERSION.**"
             echo ""
-            echo "## Downloads"
-            echo ""
-            echo "| Platform | Download |"
-            echo "|---|---|"
-            echo "| Windows | \`FeatherRPC-$VERSION-windows-installer.exe\` |"
-            echo "| Linux | \`FeatherRPC-$VERSION-x86_64.AppImage\` |"
-            echo "| macOS | \`FeatherRPC-$VERSION-macos-universal.dmg\` |"
-            echo ""
-            echo "The \`windows-x64.zip\`/\`windows-arm64.zip\` and \`linux-x86_64.tar.gz\` files are a portable, non-installer alternative to the files above - most people want the installer/AppImage/dmg instead."
-            echo ""
-            echo "The \`.pdb.zip\`, \`.dSYM.zip\`, and \`-unstripped.tar.gz\` files are debug symbols for crash troubleshooting - not needed to install or run FeatherRPC. Ignore these unless a maintainer asks you for one while investigating a crash report."
-            echo ""
             for tag in Added Changed Deprecated Removed Fixed Security; do
               if [ -n "${SECTIONS[$tag]}" ]; then
                 echo "## $tag"
