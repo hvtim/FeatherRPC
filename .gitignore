@@ -4,3 +4,10 @@ installer/app/
 installer/linux/app/
 installer/macos/app/
 *.zip
+
+# Release assets produced by manual local runs of the same build scripts
+# .github/workflows/release.yml uses - these land at repo root either way.
+FeatherRPC-*.exe
+FeatherRPC-*.dmg
+FeatherRPC-*.AppImage
+FeatherRPC-*.tar.gz
