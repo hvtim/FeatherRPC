@@ -78,6 +78,58 @@ chmod +x install.sh uninstall.sh app/FeatherRPC app/featherrpc
 tar czf FeatherRPC-<version>-linux-x86_64.tar.gz install.sh uninstall.sh app/
 ```
 
+## Symbol archiving
+
+`CrashHandler.cpp` (Windows: `platform/windows/CrashHandler.cpp`; Linux/
+macOS: `platform/posix/CrashHandler.cpp`, shared) deliberately writes raw,
+unsymbolized crash reports - module name + offset on Windows, whatever
+`backtrace_symbols_fd` resolves on Linux/macOS - not function names or
+file/line numbers. Symbol resolution is skipped inside the handler itself
+on purpose (see that file's own comments: avoiding DbgHelp/heap-touching
+work while the process may already be in a corrupted state), which means
+turning a reported crash address back into something readable is a
+separate, offline step a maintainer does later, against the *exact*
+matching build's debug symbols. That only works if those symbols were
+actually archived at release time - do this for every release, not just
+when a crash report shows up needing it, since the debug info for an
+already-shipped build can't be regenerated later if it wasn't kept.
+
+Each platform's build already produces (or can produce) the matching
+debug artifact:
+
+- **Windows**: `native/CMakeLists.txt` builds the Release config with
+  explicit `/Zi` (compile) and `/DEBUG` (link) flags, so a real
+  `FeatherRPC.pdb` (and `featherrpc-cli.pdb`) is emitted next to the exe in
+  the same build - this doesn't switch the build to the separate
+  `RelWithDebInfo` config, so the shipped binary's optimization level is
+  unaffected. Symbolize a captured `module+offset` address against it with
+  `dbghelp.dll`'s `SymLoadModuleEx`/`SymFromAddr` (or any equivalent
+  WinDbg/`cdb` workflow) - confirmed working end-to-end this way: a
+  deliberately captured crash address resolved back to the exact function
+  and offset it actually faulted in.
+- **macOS**: the `featherrpc-native` CMake target runs `dsymutil` as a
+  `POST_BUILD` step (same pattern the existing icon-generation step
+  uses), producing `FeatherRPC.app.dSYM` right next to `FeatherRPC.app`.
+  Symbolize with `atos` or `dwarfdump` against it.
+- **Linux**: no separate debug-info step is built into CMake - archive the
+  *unstripped* `FeatherRPC`/`featherrpc` binaries straight out of the
+  build directory (before whatever packaging step, if any, strips them
+  for the actual release asset). Symbolize the raw backtrace lines
+  `backtrace_symbols_fd` already wrote with `addr2line` or `objdump -d`
+  against the matching unstripped binary.
+
+Upload each platform's debug artifact as an additional GitHub Release
+asset per version, reusing this doc's naming convention, e.g.:
+
+- `FeatherRPC-<version>-windows-x64.pdb.zip` (zip both `.pdb` files together)
+- `FeatherRPC-<version>-macos-universal.dSYM.zip`
+- `FeatherRPC-<version>-linux-x86_64-unstripped.tar.gz`
+
+so a maintainer can later pull the one matching a reported build's
+version/commit (`kBuildString` in the diagnostic report gives both) and
+symbolize a raw crash address against it, rather than guessing from an
+unrelated build's symbols.
+
 ## Release notes template
 
 Reuses `CHANGELOG.md`'s own section names - it already commits to

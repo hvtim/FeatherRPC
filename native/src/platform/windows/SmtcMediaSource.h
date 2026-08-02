@@ -26,6 +26,11 @@ public:
 
 private:
     std::string _appUserModelId;
+
+    // Gates GetCurrentTrack()'s failure logging to state transitions only -
+    // it runs once per poll interval (default 2000ms), so logging every
+    // miss would flood the log. See SmtcMediaSource.cpp.
+    bool _lastGetCurrentTrackFailed = false;
 };
 
 } // namespace platform_windows

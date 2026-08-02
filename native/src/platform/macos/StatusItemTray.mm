@@ -1,5 +1,6 @@
 #include "StatusItemTray.h"
 #include "MediaRemoteSource.h"
+#include "core/ConfigPaths.h"
 
 #import <Cocoa/Cocoa.h>
 
@@ -30,6 +31,9 @@ constexpr int kCmdToggleStartAtLogin = 5;
 constexpr int kCmdExit = 6;
 constexpr int kCmdToggleTrayIcon = 7;
 constexpr int kCmdSetFallbackKey = 8;
+constexpr int kCmdToggleVerboseLogging = 9;
+constexpr int kCmdOpenAppDir = 10;
+constexpr int kCmdCopyDiagnosticInfo = 11;
 constexpr int kCmdArtModeAuto = 200;
 constexpr int kCmdArtModeCustom = 201;
 constexpr int kCmdArtModeOff = 202;
@@ -122,8 +126,6 @@ void StatusItemTray::RebuildMenu() {
         return item;
     };
 
-    addItem(@"Set Discord Application ID...", kCmdSetAppId, false);
-
     // Unlike Windows/Linux, the list here is fixed (Music.app's own
     // source, plus the MediaRemote-adapter-backed "any app" source) -
     // there's nothing to dynamically re-enumerate, so it's rebuilt
@@ -146,10 +148,29 @@ void StatusItemTray::RebuildMenu() {
     [menu addItem:[NSMenuItem separatorItem]];
 
     addItem(@"Broadcast now playing to Discord", kCmdToggleBroadcast, _config.broadcastEnabled);
-    addItem(@"Show track number", kCmdToggleTrackNumber, _config.showTrackNumber);
+
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    // Settings submenu - everything persistent or infrequently touched
+    // lives here instead of cluttering the root menu, mirroring the
+    // Windows/Linux tray's own Settings reorg.
+    NSMenu* settingsMenu = [[NSMenu alloc] init];
+    NSMenuItem* settingsParent = [menu addItemWithTitle:@"Settings" action:nil keyEquivalent:@""];
+    settingsParent.submenu = settingsMenu;
+
+    auto addSettingsItem = [&](NSString* title, int tag, bool checked) -> NSMenuItem* {
+        NSMenuItem* item = [settingsMenu addItemWithTitle:title action:@selector(menuAction:) keyEquivalent:@""];
+        item.target = _impl->target;
+        item.tag = tag;
+        item.state = checked ? NSControlStateValueOn : NSControlStateValueOff;
+        return item;
+    };
+
+    addSettingsItem(@"Set Discord Application ID...", kCmdSetAppId, false);
+    addSettingsItem(@"Show track number", kCmdToggleTrackNumber, _config.showTrackNumber);
 
     NSMenu* artMenu = [[NSMenu alloc] init];
-    NSMenuItem* artParent = [menu addItemWithTitle:@"Album Art" action:nil keyEquivalent:@""];
+    NSMenuItem* artParent = [settingsMenu addItemWithTitle:@"Album Art" action:nil keyEquivalent:@""];
     artParent.submenu = artMenu;
     auto addArtItem = [&](NSString* title, int tag, const std::string& mode) {
         NSMenuItem* item = [artMenu addItemWithTitle:title action:@selector(menuAction:) keyEquivalent:@""];
@@ -167,7 +188,7 @@ void StatusItemTray::RebuildMenu() {
     setFallbackKeyItem.tag = kCmdSetFallbackKey;
 
     NSMenu* pollMenu = [[NSMenu alloc] init];
-    NSMenuItem* pollParent = [menu addItemWithTitle:@"Poll Interval" action:nil keyEquivalent:@""];
+    NSMenuItem* pollParent = [settingsMenu addItemWithTitle:@"Poll Interval" action:nil keyEquivalent:@""];
     pollParent.submenu = pollMenu;
     const auto& presets = PollIntervalPresetsMs();
     for (size_t i = 0; i < presets.size(); ++i) {
@@ -178,13 +199,19 @@ void StatusItemTray::RebuildMenu() {
         item.state = (presets[i] == _config.pollIntervalMs) ? NSControlStateValueOn : NSControlStateValueOff;
     }
 
-    [menu addItem:[NSMenuItem separatorItem]];
-    addItem(@"Start automatically when you log in", kCmdToggleStartAtLogin, _startAtLogin);
+    addSettingsItem(@"Start automatically when you log in", kCmdToggleStartAtLogin, _startAtLogin);
     // Labeled/checked as the positive ("Show"), not "Disable", so the
     // checkmark reads naturally - checked means the icon is showing.
     // Can't apply live (a running process can't drop its own status
     // item mid-session), so this only takes effect on the next launch.
-    addItem(@"Show tray icon", kCmdToggleTrayIcon, _config.trayEnabled);
+    addSettingsItem(@"Show tray icon", kCmdToggleTrayIcon, _config.trayEnabled);
+
+    [settingsMenu addItem:[NSMenuItem separatorItem]];
+    addSettingsItem(@"Verbose Logging", kCmdToggleVerboseLogging, _config.verboseLogging);
+    addSettingsItem(@"Open App Directory", kCmdOpenAppDir, false);
+
+    [menu addItem:[NSMenuItem separatorItem]];
+    addItem(@"Copy Diagnostic Info", kCmdCopyDiagnosticInfo, false);
 
     [menu addItem:[NSMenuItem separatorItem]];
     addItem(@"Exit", kCmdExit, false);
@@ -300,6 +327,28 @@ void StatusItemTray::HandleCommand(int commandId) {
         && commandId < kCmdMediaSourceBase + static_cast<int>(_mediaSources.size())) {
         _config.mediaSource = _mediaSources[commandId - kCmdMediaSourceBase].id;
         NotifyConfigChanged();
+        return;
+    }
+
+    if (commandId == kCmdToggleVerboseLogging) {
+        _config.verboseLogging = !_config.verboseLogging;
+        NotifyConfigChanged();
+        return;
+    }
+
+    if (commandId == kCmdOpenAppDir) {
+        NSString* path = [NSString stringWithUTF8String:core::GetConfigDirectory().c_str()];
+        [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:path isDirectory:YES]];
+        return;
+    }
+
+    if (commandId == kCmdCopyDiagnosticInfo) {
+        if (OnBuildDiagnosticReport) {
+            std::string report = OnBuildDiagnosticReport();
+            NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+            [pasteboard clearContents];
+            [pasteboard setString:[NSString stringWithUTF8String:report.c_str()] forType:NSPasteboardTypeString];
+        }
         return;
     }
 }

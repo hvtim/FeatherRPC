@@ -1,0 +1,14 @@
+#pragma once
+
+// Generated from Version.h.in by cmake/GenerateVersionHeader.cmake, run as
+// a custom target on every build (not just reconfigure) - see that script
+// for why the plain configure-time substitution alone wouldn't keep
+// kGitHash fresh.
+
+namespace core {
+
+inline constexpr const char* kVersion = "@FEATHERRPC_VERSION@";
+inline constexpr const char* kGitHash = "@FEATHERRPC_GIT_HASH@";
+inline constexpr const char* kBuildString = "@FEATHERRPC_VERSION@ (@FEATHERRPC_GIT_HASH@)";
+
+} // namespace core

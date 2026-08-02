@@ -1,7 +1,9 @@
 #include "core/AppConfig.h"
 #include "core/ConfigPaths.h"
+#include "core/DiagnosticReport.h"
 #include "core/Log.h"
 #include "core/PresenceEngine.h"
+#include "core/Version.h"
 
 #include "AppleSearchAlbumArtLookup.h"
 #include "LaunchAgentAutoLaunch.h"
@@ -10,13 +12,22 @@
 #include "StatusItemTray.h"
 #include "TextPrompt.h"
 #include "cli/StatusFile.h"
+#include "platform/posix/CrashHandler.h"
 #include "platform/posix/DaemonSignal.h"
 #include "platform/posix/UnixSocketIpcTransport.h"
 
 #import <Cocoa/Cocoa.h>
 
+#include <sys/sysctl.h>
+#include <sys/utsname.h>
+
+#include <deque>
+#include <fstream>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -31,6 +42,87 @@ std::unique_ptr<core::MediaSource> MakeMediaSource(const std::string& id) {
     return std::make_unique<platform_macos::MusicMediaSource>();
 }
 
+// uname() gives the Darwin kernel version (e.g. "23.5.0"), not the
+// marketing macOS version (e.g. "14.5") most bug reports actually need -
+// NSProcessInfo's operatingSystemVersion is the documented way to get the
+// latter. Both are included since a maintainer symbolizing a crash
+// against a specific SDK/build cares about the Darwin number too.
+std::string OsDescription() {
+    NSOperatingSystemVersion v = [[NSProcessInfo processInfo] operatingSystemVersion];
+    struct utsname uts;
+    std::string kernelRelease = (uname(&uts) == 0) ? uts.release : "unknown";
+
+    char machine[256] = {};
+    size_t size = sizeof(machine);
+    std::string arch = (sysctlbyname("hw.machine", machine, &size, nullptr, 0) == 0) ? machine : "unknown arch";
+
+    std::ostringstream out;
+    out << "macOS " << v.majorVersion << "." << v.minorVersion << "." << v.patchVersion
+        << " (Darwin " << kernelRelease << "), " << arch;
+    return out.str();
+}
+
+// Called only from Copy Diagnostic Info, never from the poll loop - the
+// actual answer to "how do we tell 'wrong source picked' apart from 'the
+// app is broken'": re-queries live MediaRemote/Music.app state right at
+// report-generation time instead of depending on historical log noise.
+std::string LiveMediaSourceCheck(const core::AppConfig& config) {
+    std::ostringstream out;
+    auto source = MakeMediaSource(config.mediaSource);
+    bool found = source && source->GetCurrentTrack().has_value();
+    std::string label = config.mediaSource.empty() ? "Music" : config.mediaSource;
+    out << "Currently selected media source: " << label << ". Live check: "
+        << (found ? "found an active session for it right now." : "no active session found for it right now.");
+
+    auto available = platform_macos::MediaRemoteSource::GetAvailableSources();
+    out << " Available sources right now: ";
+    if (available.empty()) {
+        out << "(none)";
+    } else {
+        bool first = true;
+        for (const auto& src : available) {
+            if (!first) out << ", ";
+            out << src.displayName;
+            first = false;
+        }
+    }
+    return out.str();
+}
+
+std::vector<std::string> ReadRecentLogLines(size_t maxLines = 50) {
+    std::ifstream file(core::GetLogFilePath());
+    std::deque<std::string> lines;
+    std::string line;
+    while (std::getline(file, line)) {
+        lines.push_back(std::move(line));
+        if (lines.size() > maxLines) {
+            lines.pop_front();
+        }
+    }
+    return std::vector<std::string>(lines.begin(), lines.end());
+}
+
+std::optional<std::string> ReadCrashReportIfPresent() {
+    std::ifstream file(core::GetCrashFilePath(), std::ios::binary);
+    if (!file) {
+        return std::nullopt;
+    }
+    std::ostringstream out;
+    out << file.rdbuf();
+    std::string content = out.str();
+    if (content.empty()) {
+        // InstallCrashHandler() creates this file on every single launch
+        // (O_CREAT, so a genuine crash from a *previous* session survives
+        // to be read here) - an empty file just means the file has always
+        // existed but nothing has ever actually crashed, not a crash with
+        // no content. Treating that as "no report" is what makes the
+        // trailing section disappear entirely on a machine that's never
+        // crashed, instead of showing up with a confusing blank body.
+        return std::nullopt;
+    }
+    return content;
+}
+
 } // namespace
 
 int main(int argc, const char** argv) {
@@ -43,7 +135,14 @@ int main(int argc, const char** argv) {
 
     @autoreleasepool {
         core::Log::Init(core::GetLogFilePath());
-        core::Log::Write("FeatherRPC starting...");
+        core::Log::Write(std::string("FeatherRPC starting... (") + core::kBuildString + ")");
+
+        // As early as possible after Log::Init - the crash file
+        // descriptor and sigaltstack are both set up here, up front, so
+        // the handler itself never has to do anything beyond strictly
+        // async-signal-safe work. See CrashHandler.cpp (platform/posix/,
+        // shared with Linux) for the full design rationale.
+        platform_posix::InstallCrashHandler();
 
         // First thing, before touching config/engine/tray - refuses to
         // start a second instance (tray or headless) alongside one
@@ -61,6 +160,7 @@ int main(int argc, const char** argv) {
 
         core::AppConfig config = core::LoadConfig(core::GetConfigFilePath());
         std::string currentMediaSourceId = config.mediaSource;
+        core::Log::SetVerbose(config.verboseLogging);
 
         platform_macos::LaunchAgentAutoLaunch autoLaunch;
 
@@ -74,6 +174,7 @@ int main(int argc, const char** argv) {
         // reload loop below - identical either way.
         auto applyConfig = [&](const core::AppConfig& newConfig) {
             core::SaveConfig(newConfig, core::GetConfigFilePath());
+            core::Log::SetVerbose(newConfig.verboseLogging);
 
             std::unique_ptr<core::MediaSource> newMediaSource;
             if (newConfig.mediaSource != currentMediaSourceId) {
@@ -149,6 +250,16 @@ int main(int argc, const char** argv) {
 
         tray.OnEditFallbackImageKey = [&](std::string& value) {
             nativeui::PromptForText("FeatherRPC", "Fallback image asset key:", value);
+        };
+
+        tray.OnBuildDiagnosticReport = [&] {
+            core::DiagnosticReportInputs inputs;
+            inputs.config = config;
+            inputs.osDescription = OsDescription();
+            inputs.mediaSourceLiveCheckText = LiveMediaSourceCheck(config);
+            inputs.recentLogLines = ReadRecentLogLines();
+            inputs.lastCrashReportText = ReadCrashReportIfPresent();
+            return core::BuildDiagnosticReport(inputs);
         };
 
         engine.OnStatusChanged = [&] {

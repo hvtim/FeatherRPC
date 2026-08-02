@@ -23,7 +23,15 @@ glossed over.
   not "verified." This now also covers `MediaRemoteSource` (the "Now
   Playing (any app)" source, see the scope-limit entry below) - the
   `FetchContent`-built adapter has never actually been built or run on a
-  real Mac either.
+  real Mac either. Also covers the diagnostics/bug-reporting feature added
+  alongside Windows/Linux: the Settings submenu reorg and 3 new
+  `StatusItemTray` actions (Verbose Logging, Open App Directory via
+  `NSWorkspace`, Copy Diagnostic Info via `NSPasteboard`), and
+  `InstallCrashHandler()` (`platform/posix/CrashHandler.cpp`, shared with
+  Linux - genuinely built and verified end-to-end there via a real
+  deliberate `SIGSEGV`, but its POSIX-signal-handler assumptions have
+  never been exercised on Darwin specifically, which is exactly the
+  caveat the shared file's own header comment already calls out).
 - **Linux tray rendering: confirmed on two of three desktop configurations.**
   KDE Plasma 6 (CachyOS) and GNOME Shell 50.2 with the
   `appindicatorsupport@rgcjonas.gmail.com` extension (Fedora) are both
@@ -122,7 +130,6 @@ glossed over.
   (Perl/Python/Ruby) in macOS; it's still shipping as of the most recent
   upstream `mediaremote-adapter` testing, but there's no fallback if a
   future macOS drops it entirely - Music.app's own source is unaffected.
-
 ## Fixed, but worth knowing about (bugs hit during development)
 
 - **macOS: no `.icns` app icon.** `native/src/platform/macos/make-icon.sh`
@@ -371,6 +378,132 @@ glossed over.
   bytes - confirmed via `busctl` showing the property's array length as 0,
   and the tray rendering a solid grey circle, then a broken-image "X",
   instead of the actual icon.
+- **Linux: near-guaranteed startup segfault in `SniTray::Create()`.** First
+  found intermittently in a WSL/Fedora test environment, then confirmed
+  deterministic (crashed essentially every cold launch) on real hardware -
+  a Fedora 44 Workstation/GNOME desktop, with a real `StatusNotifierWatcher`
+  host (the `appindicatorsupport@rgcjonas.gmail.com` extension) actually
+  running, not just a headless/watcher-less test rig. Root-caused via a
+  `ThreadSanitizer` build plus a real post-mortem `coredumpctl`/`gdb`
+  backtrace from an untraced crash on that hardware (both showed the same
+  signature: the crash lands inside `__libc_start_main_impl` with only the
+  main thread ever having existed, before `engine.Start()` even spawns
+  `PresenceEngine`'s worker thread): `SniTray::Create()` called
+  `RefreshMediaSourcesAndRebuild()` synchronously, which makes a *blocking*
+  raw-`libdbus` call (`MprisMediaSource.cpp` uses `<dbus/dbus.h>` directly,
+  not GDBus) while `GDBusConnection`'s own internal worker thread - spun up
+  moments earlier by `g_bus_get_sync()` - was still concurrently finishing
+  its own setup. Confirmed via bisection on the real hardware (10/10 clean
+  vs. 8/8 crashed across repeated trials, both ways): removing that one
+  synchronous call fixes it outright, even though the same libdbus code
+  keeps running moments later from `PresenceEngine`'s own worker thread
+  with no issue - it's specifically the *libdbus-blocking-call-during-
+  GDBus-worker-thread-startup* window that's unsafe, not libdbus and GDBus
+  coexisting in the process in general. Fixed by deferring that first
+  refresh to the next main-loop iteration via `g_idle_add` instead of
+  calling it inline during `Create()` - still satisfies the original
+  "build the menu once up front" goal (it fires before any real host could
+  round-trip a `GetLayout` call) without needing to fix libdbus/GDBus's own
+  internals. Also explains why this was so hard to pin down initially:
+  *any* added overhead (a debugger attached, a sanitizer build, even just
+  compiling with `-g` and no other changes) reliably avoided the race
+  window entirely, while the plain, uninstrumented release build hit it
+  almost every time - a debugger or sanitizer build was never going to
+  catch this on its own, only cross-referencing a genuinely untraced crash
+  (via `coredumpctl`) against a `ThreadSanitizer` build's independent
+  finding did.
+- **Linux: "Copy Diagnostic Info" permanently froze the entire tray on a
+  Wayland session with `wl-copy` installed.** Not a slow action or a failed
+  one - the whole app stopped responding to *everything* (every menu item,
+  Exit included) from that click onward, confirmed live on the same real
+  Fedora 44/GNOME desktop as the entry above, reproduced twice in
+  isolation via direct D-Bus calls (`gdbus`/`busctl`), both tools timing
+  out identically against a process that was still alive (confirmed via
+  `ps`) but wedged - zero CPU, no crash, no core dump. Root cause:
+  `Clipboard.cpp`'s `PipeToCommand()` used `popen()`/`pclose()` to pipe the
+  report into `wl-copy`'s stdin, and `pclose()` always blocks until the
+  child process exits - but `wl-copy`, unlike `xclip`/`xsel`, doesn't fork
+  into the background and exit after reading stdin; by design it keeps
+  running as that same process to keep serving the Wayland clipboard for
+  future pastes (confirmed directly: it showed up as a live,
+  non-reparented child of `FeatherRPC` in the process tree, indefinitely).
+  `pclose()` was therefore waiting on a process built to never exit on its
+  own - and since `CopyToClipboard()` runs synchronously inside the
+  dbusmenu `Event` handler on the GLib main thread, that block took the
+  entire event loop down with it, not just the one click.
+
+  Two intermediate fixes were tried and superseded before landing on the
+  final design, each worth recording since the reasoning matters:
+  - A hand-rolled double-fork (`pipe()`/`fork()`/`fork()`/`execl()`) that
+    never waited on the actual tool at all - fixed the hang, but gave up
+    exit-code-based failure detection entirely ("success" became "the
+    write reached the pipe," not "the tool actually worked").
+  - `GSubprocess`'s `g_subprocess_communicate_async()` - GLib's own async
+    subprocess API, which seemed like a clean fix until closer reading of
+    GLib's own docs (confirmed against `docs.gtk.org`) revealed it
+    completes *only once the child exits* - meaning its callback would
+    simply never fire for `wl-copy`, leaking the `GSubprocess`/attempt
+    object for as long as it ran. Caught before shipping, not after.
+
+  Final fix: still `GSubprocess` (already a hard, `REQUIRED` build
+  dependency of this binary via `SniTray.cpp`'s GDBus-based tray, so this
+  adds no new dependency), but each attempt now carries a `GCancellable`
+  tied to a short (`kToolPatienceMs` = 200ms) `g_timeout_add()`. A tool
+  that exits within that window (the normal case for `xclip`/`xsel`, or
+  any fast failure) reports its real, GLib-observed exit status - the
+  same signal `pclose()` used to give, recovering full failure-detection
+  fidelity for the common case. A tool still running after the window
+  (the normal case for `wl-copy`) has its wait cancelled - confirmed
+  directly against GLib's own source (`gsubprocess.c`) before relying on
+  it: "Cancelling @cancellable doesn't kill the subprocess. Call
+  g_subprocess_force_exit() if it is desirable" - so `wl-copy` is left
+  completely undisturbed, still holding the clipboard, exactly as
+  intended; only this process's own observation of it stops. The whole
+  `wl-copy` -> `xclip` -> `xsel` -> file fallback chain is driven
+  asynchronously by *real* per-tool failures (never a guess), advancing
+  on genuine confirmed failure and stopping on genuine confirmed or
+  presumed (timeout-bounded) success.
+
+  Verified in three stages: (1) an isolated GLib-main-loop test harness
+  linked directly against the real `Clipboard.cpp`, driving fake
+  `wl-copy`/`xclip`/`xsel` scripts with fully controlled behavior (exits
+  fast and succeeds; exits fast and fails, correctly falling through to
+  the next tool; never exits at all) - all three scenarios pass, with the
+  never-exits case resolving in ~1.5s (the test harness's own fixed
+  observation window, not the code's own latency) instead of hanging for
+  its simulated lifetime, and zero lingering warnings/fallback triggers
+  for the genuine-success case; (2) real-hardware timing on the same
+  Fedora 44 desktop - the real-failure-then-fallback path resolves in
+  24-29ms (WSL's own equivalent test measured 156-175ms, a reminder that
+  WSL2's virtualized process-spawn overhead is not representative of real
+  target hardware), comfortably inside the 200ms bound with large margin;
+  (3) the exact original failing sequence (Copy Diagnostic Info
+  immediately followed by another menu click) on live D-Bus calls against
+  the real desktop - both actions now complete in 17-24ms, the tray stays
+  fully responsive afterward, the log shows no spurious fallback warning,
+  and `wl-copy` is confirmed still alive and holding the clipboard
+  afterward.
+
+- **Process note: building this Linux target via WSL from a
+  Windows-mounted path (`/mnt/c/...`) silently reintroduces the exact
+  filename-collision class of bug this project already documents for
+  Windows.** `feather-native`'s output is named `FeatherRPC`; the CLI
+  target's is `featherrpc` - distinct on a real Linux filesystem, but
+  `/mnt/c/...` is backed by NTFS, which is case-insensitive even when
+  accessed through WSL's own tools. Both targets' build output silently
+  landed on the *same* file during this session's clipboard-fix
+  verification, and whichever target's link step ran last "won" -
+  producing a `FeatherRPC` that was actually the CLI tool's binary,
+  caught only because launching it printed CLI usage text instead of
+  starting the tray. Not a bug in the shipped `CMakeLists.txt` (which
+  correctly gives each target a distinct name, matching this project's
+  own documented case-insensitivity precedent for why *Windows* needs a
+  `-cli` suffix that Linux doesn't need on a real filesystem) - purely a
+  build-environment hazard specific to building *from* a Windows-mounted
+  path. Fix: point the CMake build directory at WSL's native filesystem
+  (e.g. `cmake -S /mnt/c/.../native -B ~/some-native-dir`), keeping only
+  the *source* on the Windows-mounted path - confirmed this produces two
+  genuinely distinct files (995KB CLI vs. 1.57MB tray) as expected.
 
 ## Design decisions that were tried, then deliberately reversed
 

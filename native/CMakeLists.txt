@@ -6,6 +6,27 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
+# Single source of truth for the app's own version string (also used for
+# the macOS bundle properties below) - the git commit hash portion of
+# Version.h is regenerated on every build, not just reconfigure, since
+# GenerateVersionHeader.cmake runs as an ALL custom target rather than at
+# CMake-configure time (see that script's own comment for why a plain
+# configure_file() alone wouldn't keep the hash fresh across builds with
+# no CMakeLists.txt/source-file changes).
+set(FEATHERRPC_VERSION "0.1.2")
+
+set(FEATHERRPC_GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
+add_custom_target(generate_version ALL
+    COMMAND ${CMAKE_COMMAND}
+        -DTEMPLATE=${CMAKE_SOURCE_DIR}/src/core/Version.h.in
+        -DDST=${FEATHERRPC_GENERATED_DIR}/core/Version.h
+        -DSRC_DIR=${CMAKE_SOURCE_DIR}
+        -DVERSION=${FEATHERRPC_VERSION}
+        -P ${CMAKE_SOURCE_DIR}/cmake/GenerateVersionHeader.cmake
+    BYPRODUCTS ${FEATHERRPC_GENERATED_DIR}/core/Version.h
+    COMMENT "Generating core/Version.h"
+)
+
 if(WIN32)
     enable_language(RC)
 
@@ -15,6 +36,8 @@ if(WIN32)
         # core/ - 100% portable engine layer, no platform #ifdefs, no wx dependency
         src/core/AppConfig.cpp
         src/core/Log.cpp
+        src/core/CrashRing.cpp
+        src/core/DiagnosticReport.cpp
         src/core/DiscordIpcClient.cpp
         src/core/PresenceEngine.cpp
 
@@ -34,17 +57,21 @@ if(WIN32)
         src/platform/windows/WinHttpAlbumArtLookup.cpp
         src/platform/windows/ShellLinkAutoLaunch.cpp
         src/platform/windows/TrayIcon.cpp
+        src/platform/windows/Clipboard.cpp
         src/platform/windows/ToastPermission.cpp
         src/platform/windows/TextPrompt.cpp
         src/platform/windows/DarkMode.cpp
         src/platform/windows/DaemonSignal.cpp
+        src/platform/windows/CrashHandler.cpp
         src/platform/windows/resources.rc
     )
 
     target_include_directories(featherrpc-native PRIVATE
         src
+        ${FEATHERRPC_GENERATED_DIR}
         ${CMAKE_SOURCE_DIR}/third_party
     )
+    add_dependencies(featherrpc-native generate_version)
 
     target_compile_definitions(featherrpc-native PRIVATE
         UNICODE
@@ -70,6 +97,20 @@ if(WIN32)
     # claim the same resource ID), so it's disabled here.
     target_link_options(featherrpc-native PRIVATE "/MANIFEST:NO")
 
+    # Explicit /Zi + /DEBUG on the Release config itself, rather than
+    # switching the shipped build to the RelWithDebInfo config - this
+    # keeps docs/Building.md's documented `--config Release` command and
+    # Release's actual optimization level unchanged, while still emitting
+    # a real FeatherRPC.pdb next to the exe. That PDB is what turns
+    # CrashHandler.cpp's raw "module+offset" backtraces into real
+    # file/line symbols - see docs/Releasing.md's Symbol archiving
+    # section, where it gets uploaded as a release asset alongside the
+    # exe it matches. /OPT:REF /OPT:ICF spelled out explicitly so /DEBUG's
+    # own default of enabling /INCREMENTAL can't silently disable them.
+    target_compile_options(featherrpc-native PRIVATE $<$<CONFIG:Release>:/Zi>)
+    target_link_options(featherrpc-native PRIVATE
+        $<$<CONFIG:Release>:/DEBUG> $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
+
     set_target_properties(featherrpc-native PROPERTIES OUTPUT_NAME "FeatherRPC")
 
     # featherrpc - the thin CLI control tool (edits config.json, signals the
@@ -80,6 +121,8 @@ if(WIN32)
         src/platform/windows/main_windows_cli.cpp
 
         src/core/AppConfig.cpp
+        src/core/Log.cpp # SmtcMediaSource.cpp's failure logging needs this to link
+        src/core/CrashRing.cpp # Log.cpp's ring-buffer write needs this to link
 
         src/cli/CliDispatch.cpp
         src/cli/StatusFile.cpp
@@ -95,8 +138,10 @@ if(WIN32)
 
     target_include_directories(featherrpc-cli PRIVATE
         src
+        ${FEATHERRPC_GENERATED_DIR}
         ${CMAKE_SOURCE_DIR}/third_party
     )
+    add_dependencies(featherrpc-cli generate_version)
 
     target_compile_definitions(featherrpc-cli PRIVATE
         UNICODE
@@ -111,6 +156,15 @@ if(WIN32)
         Shlwapi    # SHLoadIndirectString (SmtcMediaSource's RelaunchDisplayNameResource resolution)
         Version    # GetFileVersionInfoW/VerQueryValueW (SmtcMediaSource's process-version-info app-name fallback)
     )
+
+    # Same rationale as featherrpc-native above - a real PDB for the CLI
+    # tool too, since it links SmtcMediaSource.cpp/Log.cpp and can crash
+    # the same way (no CrashHandler installed here yet, but Event
+    # Viewer/WER captures still benefit from a matching PDB to symbolize
+    # against).
+    target_compile_options(featherrpc-cli PRIVATE $<$<CONFIG:Release>:/Zi>)
+    target_link_options(featherrpc-cli PRIVATE
+        $<$<CONFIG:Release>:/DEBUG> $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
 
     # NOT "featherrpc" - Windows filesystems are case-insensitive, so that
     # would collide with FeatherRPC.exe above and one would silently
@@ -148,6 +202,8 @@ elseif(APPLE)
         # core/ - 100% portable engine layer, no platform #ifdefs, no wx dependency
         src/core/AppConfig.cpp
         src/core/Log.cpp
+        src/core/CrashRing.cpp
+        src/core/DiagnosticReport.cpp
         src/core/DiscordIpcClient.cpp
         src/core/PresenceEngine.cpp
 
@@ -165,16 +221,19 @@ elseif(APPLE)
         src/platform/macos/StatusItemTray.mm
         src/platform/macos/TextPrompt.mm
 
-        # platform/posix/ - Unix-socket IPC transport + daemon signaling,
-        # both shared with Linux
+        # platform/posix/ - Unix-socket IPC transport + daemon signaling +
+        # crash handler, all shared with Linux
         src/platform/posix/UnixSocketIpcTransport.cpp
         src/platform/posix/DaemonSignal.cpp
+        src/platform/posix/CrashHandler.cpp
     )
 
     target_include_directories(featherrpc-native PRIVATE
         src
+        ${FEATHERRPC_GENERATED_DIR}
         ${CMAKE_SOURCE_DIR}/third_party
     )
+    add_dependencies(featherrpc-native generate_version)
 
     # ARC manages the Cocoa/Foundation object lifetimes used throughout
     # platform/macos/*.mm (NSStatusItem, NSMenu, NSAlert, etc.) - without
@@ -193,8 +252,8 @@ elseif(APPLE)
     set_target_properties(featherrpc-native PROPERTIES
         OUTPUT_NAME "FeatherRPC"
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/macos/Info.plist.in"
-        MACOSX_BUNDLE_BUNDLE_VERSION "0.1.2"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.2"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${FEATHERRPC_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${FEATHERRPC_VERSION}"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.hvtim.featherrpc"
     )
 
@@ -228,6 +287,22 @@ elseif(APPLE)
         COMMENT "Bundling mediaremote-adapter into FeatherRPC.app"
     )
 
+    # Symbol archiving (see docs/Releasing.md's "Symbol archiving" section) -
+    # dsymutil extracts DWARF debug info from the built binary into a
+    # separate .dSYM bundle, the macOS equivalent of archiving a PDB
+    # (Windows, see the Release-config /Zi+/DEBUG setup above) or an
+    # unstripped binary (Linux). This is what turns CrashHandler.cpp's raw
+    # backtraces (platform/posix/CrashHandler.cpp, shared with Linux) into
+    # real file/line symbols later, offline, against the exact matching
+    # release build - never needed at runtime, so it's produced unconditionally
+    # rather than gated behind a build-type check.
+    add_custom_command(TARGET featherrpc-native POST_BUILD
+        COMMAND dsymutil
+            "$<TARGET_FILE:featherrpc-native>"
+            -o "$<TARGET_BUNDLE_DIR:featherrpc-native>.dSYM"
+        COMMENT "Generating FeatherRPC.app.dSYM for offline crash symbolication"
+    )
+
     # featherrpc-cli - the thin CLI control tool. Plain command-line tool,
     # not a .app bundle (no MACOSX_BUNDLE here, unlike the target above) -
     # it needs to run from a terminal and return exit codes normally. It
@@ -241,6 +316,7 @@ elseif(APPLE)
 
         src/core/AppConfig.cpp
         src/core/Log.cpp # MediaRemoteSource.mm's self-test warning needs this to link
+        src/core/CrashRing.cpp
 
         src/cli/CliDispatch.cpp
         src/cli/StatusFile.cpp
@@ -253,8 +329,10 @@ elseif(APPLE)
 
     target_include_directories(featherrpc-cli PRIVATE
         src
+        ${FEATHERRPC_GENERATED_DIR}
         ${CMAKE_SOURCE_DIR}/third_party
     )
+    add_dependencies(featherrpc-cli generate_version)
 
     target_compile_options(featherrpc-cli PRIVATE -fobjc-arc)
 
@@ -279,6 +357,8 @@ else()
         # core/ - 100% portable engine layer, no platform #ifdefs, no wx dependency
         src/core/AppConfig.cpp
         src/core/Log.cpp
+        src/core/CrashRing.cpp
+        src/core/DiagnosticReport.cpp
         src/core/DiscordIpcClient.cpp
         src/core/PresenceEngine.cpp
 
@@ -294,20 +374,24 @@ else()
         src/platform/linux/DesktopAutoLaunch.cpp
         src/platform/linux/SniTray.cpp
         src/platform/linux/TextPrompt.cpp
+        src/platform/linux/Clipboard.cpp
 
-        # platform/posix/ - Unix-socket IPC transport + daemon signaling,
-        # both shared with macOS
+        # platform/posix/ - Unix-socket IPC transport + daemon signaling +
+        # crash handler, all shared with macOS
         src/platform/posix/UnixSocketIpcTransport.cpp
         src/platform/posix/DaemonSignal.cpp
+        src/platform/posix/CrashHandler.cpp
     )
 
     target_include_directories(featherrpc-native PRIVATE
         src
+        ${FEATHERRPC_GENERATED_DIR}
         ${CMAKE_SOURCE_DIR}/third_party
         ${DBUS_INCLUDE_DIRS}
         ${GIO_INCLUDE_DIRS}
         ${CURL_INCLUDE_DIRS}
     )
+    add_dependencies(featherrpc-native generate_version)
 
     target_link_libraries(featherrpc-native PRIVATE
         ${DBUS_LIBRARIES}
@@ -338,6 +422,8 @@ else()
         src/platform/linux/main_linux_cli.cpp
 
         src/core/AppConfig.cpp
+        src/core/Log.cpp # MprisMediaSource.cpp's failure logging needs this to link
+        src/core/CrashRing.cpp # Log.cpp's ring-buffer write needs this to link
 
         src/cli/CliDispatch.cpp
         src/cli/StatusFile.cpp
@@ -350,9 +436,11 @@ else()
 
     target_include_directories(featherrpc PRIVATE
         src
+        ${FEATHERRPC_GENERATED_DIR}
         ${CMAKE_SOURCE_DIR}/third_party
         ${DBUS_INCLUDE_DIRS}
     )
+    add_dependencies(featherrpc generate_version)
 
     target_link_libraries(featherrpc PRIVATE
         ${DBUS_LIBRARIES}

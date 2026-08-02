@@ -1,4 +1,5 @@
 #include "MprisMediaSource.h"
+#include "core/Log.h"
 
 #include <dbus/dbus.h>
 
@@ -32,6 +33,14 @@ DBusConnection* GetSessionBus() {
         dbus_error_init(&error);
         DBusConnection* conn = dbus_bus_get(DBUS_BUS_SESSION, &error);
         if (dbus_error_is_set(&error)) {
+            // Only ever runs once per process (this whole lambda is a
+            // static initializer), so unconditional logging here can't
+            // spam - and if the session bus is genuinely unreachable,
+            // every media-source call for the rest of the process's life
+            // silently returns nothing without this, with no way to tell
+            // that apart from "no player is running".
+            core::Log::Write(std::string("[warn] MPRIS: couldn't connect to the D-Bus session bus (") +
+                              error.message + ") - media source detection will not work this session.");
             dbus_error_free(&error);
         }
         return conn;
@@ -41,9 +50,13 @@ DBusConnection* GetSessionBus() {
 
 // Calls org.freedesktop.DBus.Properties.Get and returns the raw reply
 // (still wrapped in its outer variant) - callers recurse into it with the
-// Read* helpers below based on the expected type.
+// Read* helpers below based on the expected type. errorOut, if given, is
+// set to the real DBusError message on failure - callers use this to tell
+// a genuine D-Bus problem apart from "the player just isn't running right
+// now" (e.g. org.freedesktop.DBus.Error.ServiceUnknown), which is the
+// overwhelmingly common, totally expected reason this fails.
 DBusMessage* GetProperty(DBusConnection* conn, const std::string& busName, const std::string& path,
-    const std::string& iface, const std::string& prop) {
+    const std::string& iface, const std::string& prop, std::string* errorOut = nullptr) {
     DBusMessage* msg = dbus_message_new_method_call(
         busName.c_str(), path.c_str(), "org.freedesktop.DBus.Properties", "Get");
     if (!msg) return nullptr;
@@ -60,6 +73,9 @@ DBusMessage* GetProperty(DBusConnection* conn, const std::string& busName, const
     DBusMessage* reply = dbus_connection_send_with_reply_and_block(conn, msg, kCallTimeoutMs, &error);
     dbus_message_unref(msg);
     if (dbus_error_is_set(&error)) {
+        if (errorOut) {
+            *errorOut = error.name ? (std::string(error.name) + ": " + (error.message ? error.message : "")) : "";
+        }
         dbus_error_free(&error);
     }
     return reply;
@@ -159,6 +175,13 @@ void ReadMetadataInto(DBusMessage* reply, core::TrackInfo& info) {
     }
 }
 
+// Gates GetAvailableSources()'s ListNames-failure logging to state
+// transitions only - see MprisMediaSource::_lastGetCurrentTrackFailed for
+// why. File-scope static rather than a member since GetAvailableSources()
+// is itself static, called before any instance necessarily exists (to
+// populate the tray's Media Source submenu).
+bool s_lastListNamesFailed = false;
+
 } // namespace
 
 MprisMediaSource::MprisMediaSource(std::string busName) : _busName(std::move(busName)) {}
@@ -178,8 +201,21 @@ std::vector<core::MediaSourceInfo> MprisMediaSource::GetAvailableSources() {
     DBusMessage* reply = dbus_connection_send_with_reply_and_block(conn, msg, kCallTimeoutMs, &error);
     dbus_message_unref(msg);
     if (!reply) {
+        // Runs once per menu-open, not once per poll, but should still
+        // stay quiet if the session bus is genuinely, persistently down -
+        // logged only on the failed->failed edge.
+        if (!s_lastListNamesFailed) {
+            core::Log::Write(std::string("[warn] MPRIS: listing D-Bus names failed (") +
+                              (error.message ? error.message : "unknown error") +
+                              ") - the Media Source menu will show no players until this recovers.");
+            s_lastListNamesFailed = true;
+        }
         dbus_error_free(&error);
         return result;
+    }
+    if (s_lastListNamesFailed) {
+        core::Log::Write("MPRIS: listing D-Bus names recovered - succeeded again.");
+        s_lastListNamesFailed = false;
     }
 
     DBusMessageIter iter, arr;
@@ -217,9 +253,27 @@ std::optional<core::TrackInfo> MprisMediaSource::GetCurrentTrack() {
 
     // A failed property fetch here almost always means the player quit
     // since it was last enumerated - same "just report nothing" handling
-    // as the Windows SMTC source's session-not-found case.
-    DBusMessage* statusReply = GetProperty(conn, _busName, kPlayerPath, kPlayerIface, "PlaybackStatus");
-    if (!statusReply) return std::nullopt;
+    // as the Windows SMTC source's session-not-found case. Still worth
+    // logging the real reason on the failed->failed edge (not every poll)
+    // though: this is exactly the log line that tells a bug reporter
+    // "player closed" (ServiceUnknown/NameHasNoOwner) apart from a
+    // genuine D-Bus problem, instead of both looking identically like
+    // silent nothing.
+    std::string statusError;
+    DBusMessage* statusReply = GetProperty(conn, _busName, kPlayerPath, kPlayerIface, "PlaybackStatus", &statusError);
+    if (!statusReply) {
+        if (!_lastGetCurrentTrackFailed) {
+            core::Log::Write("[warn] MPRIS: reading PlaybackStatus for " + _busName + " failed (" +
+                              (statusError.empty() ? "no error detail available" : statusError) +
+                              ") - will keep retrying silently.");
+            _lastGetCurrentTrackFailed = true;
+        }
+        return std::nullopt;
+    }
+    if (_lastGetCurrentTrackFailed) {
+        core::Log::Write("MPRIS: reading " + _busName + " recovered - succeeded again.");
+        _lastGetCurrentTrackFailed = false;
+    }
     std::string statusStr = ReadVariantString(statusReply);
     dbus_message_unref(statusReply);
 

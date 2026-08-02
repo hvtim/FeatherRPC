@@ -45,6 +45,11 @@ public:
     std::function<void(std::string&)> OnEditCustomArtUrl;
     std::function<void(std::string&)> OnEditFallbackImageKey;
 
+    // Assembles the tray's "Copy Diagnostic Info" text - wired from
+    // main.mm the same way the Edit* callbacks above are. Called
+    // synchronously from HandleCommand() on the main thread.
+    std::function<std::string()> OnBuildDiagnosticReport;
+
     // Invoked by the Objective-C target/action glue in StatusItemTray.mm
     // when a menu item fires - not meant to be called from main.mm.
     void HandleCommand(int commandId);

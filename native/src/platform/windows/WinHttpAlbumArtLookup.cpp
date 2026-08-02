@@ -1,5 +1,6 @@
 #include "WinHttpAlbumArtLookup.h"
 #include "StringConvert.h"
+#include "core/Log.h"
 
 #include <nlohmann/json.hpp>
 
@@ -162,8 +163,12 @@ std::optional<std::string> WinHttpAlbumArtLookup::Lookup(const std::string& term
                 }
             }
         }
-    } catch (const nlohmann::json::exception&) {
-        // Leave result empty - malformed/unexpected response body.
+    } catch (const nlohmann::json::exception& e) {
+        // Fires at most once per track change (not per poll), so
+        // unconditional logging here won't spam - useful signal for a bug
+        // report if iTunes' search API ever changes shape.
+        core::Log::Write(std::string("[warn] Album art: iTunes search response for \"") + term +
+                          "\" (" + entity + ") was malformed (" + e.what() + ") - skipping.");
     }
     return result;
 }
@@ -200,8 +205,9 @@ std::optional<std::string> WinHttpAlbumArtLookup::FindReleaseIdByAlbum(
                 return idIt->get<std::string>();
             }
         }
-    } catch (const nlohmann::json::exception&) {
-        // Leave empty - malformed/unexpected response body.
+    } catch (const nlohmann::json::exception& e) {
+        core::Log::Write(std::string("[warn] Album art: MusicBrainz release search for \"") + artist +
+                          "\" / \"" + album + "\" returned malformed JSON (" + e.what() + ") - skipping.");
     }
     return std::nullopt;
 }
@@ -231,8 +237,9 @@ std::optional<std::string> WinHttpAlbumArtLookup::FindReleaseIdByRecording(
                 return idIt->get<std::string>();
             }
         }
-    } catch (const nlohmann::json::exception&) {
-        // Leave empty - malformed/unexpected response body.
+    } catch (const nlohmann::json::exception& e) {
+        core::Log::Write(std::string("[warn] Album art: MusicBrainz recording search for \"") + artist +
+                          "\" / \"" + track + "\" returned malformed JSON (" + e.what() + ") - skipping.");
     }
     return std::nullopt;
 }
@@ -279,8 +286,9 @@ std::optional<std::string> WinHttpAlbumArtLookup::CoverArtArchiveFrontUrl(const 
                 }
             }
         }
-    } catch (const nlohmann::json::exception&) {
-        // Leave empty - malformed/unexpected response body.
+    } catch (const nlohmann::json::exception& e) {
+        core::Log::Write(std::string("[warn] Album art: Cover Art Archive response for release ") + releaseId +
+                          " was malformed (" + e.what() + ") - skipping.");
     }
     return std::nullopt;
 }

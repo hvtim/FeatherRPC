@@ -21,4 +21,13 @@ std::filesystem::path GetPidFilePath();
 // firing, so `featherrpc status` is a fast file read with no IPC round-trip.
 std::filesystem::path GetStatusFilePath();
 
+// Where a crash handler writes its report - deliberately a separate file
+// from GetLogFilePath(), not appended to the main log: the crash handlers
+// (CrashHandler.cpp, Windows and POSIX) must never touch core::Log or the
+// main log file at all, since the crashing thread could have it open via
+// std::ofstream at the exact moment of the crash. Checked for existence by
+// DiagnosticReport::BuildDiagnosticReport() and folded into "Copy
+// Diagnostic Info" when present.
+std::filesystem::path GetCrashFilePath();
+
 } // namespace core

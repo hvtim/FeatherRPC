@@ -1,7 +1,9 @@
 #include "TrayIcon.h"
+#include "Clipboard.h"
 #include "DarkMode.h"
 #include "StringConvert.h"
 #include "ToastPermission.h"
+#include "core/ConfigPaths.h"
 #include "core/Log.h"
 #include "resource.h"
 
@@ -24,6 +26,9 @@ constexpr UINT CMD_TOGGLE_START_AT_LOGIN = 5;
 constexpr UINT CMD_EXIT = 6;
 constexpr UINT CMD_TOGGLE_TRAY_ENABLED = 7;
 constexpr UINT CMD_SET_FALLBACK_KEY = 8;
+constexpr UINT CMD_TOGGLE_VERBOSE_LOGGING = 9;
+constexpr UINT CMD_OPEN_APP_DIR = 10;
+constexpr UINT CMD_COPY_DIAGNOSTIC_INFO = 11;
 
 constexpr UINT CMD_ART_MODE_AUTO = 200;
 constexpr UINT CMD_ART_MODE_CUSTOM = 201;
@@ -312,33 +317,47 @@ LRESULT TrayIcon::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 void TrayIcon::BuildMenuOnce() {
     menu_ = CreatePopupMenu();
 
-    AppendMenuW(menu_, MF_STRING, CMD_SET_APP_ID, L"Set Discord Application ID...");
-
     sourceMenu_ = CreatePopupMenu();
     AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(sourceMenu_), L"Media Source");
 
     AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
-
     AppendMenuW(menu_, MF_STRING, CMD_TOGGLE_BROADCAST, L"Broadcast now playing to Discord");
-    AppendMenuW(menu_, MF_STRING, CMD_TOGGLE_TRACK_NUMBER, L"Show track number");
+    AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
+
+    // Settings - everything persistent/infrequently-accessed, kept out of
+    // the top-level menu. Media Source and Broadcast stay top-level since
+    // those are the frequently-toggled primary controls.
+    settingsMenu_ = CreatePopupMenu();
+    AppendMenuW(settingsMenu_, MF_STRING, CMD_SET_APP_ID, L"Set Discord Application ID...");
+    AppendMenuW(settingsMenu_, MF_STRING, CMD_TOGGLE_TRACK_NUMBER, L"Show track number");
 
     artMenu_ = CreatePopupMenu();
     AppendMenuW(artMenu_, MF_STRING, CMD_ART_MODE_AUTO, L"Automatic (look up cover art)");
     AppendMenuW(artMenu_, MF_STRING, CMD_ART_MODE_CUSTOM, L"Custom image URL...");
     AppendMenuW(artMenu_, MF_STRING, CMD_ART_MODE_OFF, L"Fallback image only");
     AppendMenuW(artMenu_, MF_STRING, CMD_SET_FALLBACK_KEY, L"Set Fallback Image Key...");
-    AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(artMenu_), L"Album Art");
+    AppendMenuW(settingsMenu_, MF_POPUP, reinterpret_cast<UINT_PTR>(artMenu_), L"Album Art");
 
     pollMenu_ = CreatePopupMenu();
     for (size_t i = 0; i < pollIntervalPresetsMs_.size(); ++i) {
         std::wstring label = std::to_wstring(pollIntervalPresetsMs_[i] / 1000) + L"s";
         AppendMenuW(pollMenu_, MF_STRING, CMD_POLL_INTERVAL_BASE + static_cast<UINT>(i), label.c_str());
     }
-    AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(pollMenu_), L"Poll Interval");
+    AppendMenuW(settingsMenu_, MF_POPUP, reinterpret_cast<UINT_PTR>(pollMenu_), L"Poll Interval");
 
+    AppendMenuW(settingsMenu_, MF_STRING, CMD_TOGGLE_START_AT_LOGIN, L"Start automatically when you log in");
+    AppendMenuW(settingsMenu_, MF_STRING, CMD_TOGGLE_TRAY_ENABLED, L"Show tray icon (applies next launch)");
+
+    AppendMenuW(settingsMenu_, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(settingsMenu_, MF_STRING, CMD_TOGGLE_VERBOSE_LOGGING, L"Verbose Logging");
+    AppendMenuW(settingsMenu_, MF_STRING, CMD_OPEN_APP_DIR, L"Open App Directory");
+
+    AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(settingsMenu_), L"Settings");
     AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu_, MF_STRING, CMD_TOGGLE_START_AT_LOGIN, L"Start automatically when you log in");
-    AppendMenuW(menu_, MF_STRING, CMD_TOGGLE_TRAY_ENABLED, L"Show tray icon (applies next launch)");
+
+    // Top-level, not buried in Settings - the one action that matters most
+    // for actually producing a bug report should be easy to find.
+    AppendMenuW(menu_, MF_STRING, CMD_COPY_DIAGNOSTIC_INFO, L"Copy Diagnostic Info");
 
     AppendMenuW(menu_, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu_, MF_STRING, CMD_EXIT, L"Exit");
@@ -365,6 +384,7 @@ void TrayIcon::SyncMenuState() {
     CheckMenuItem(menu_, CMD_TOGGLE_TRACK_NUMBER, MF_BYCOMMAND | (config_.showTrackNumber ? MF_CHECKED : MF_UNCHECKED));
     CheckMenuItem(menu_, CMD_TOGGLE_START_AT_LOGIN, MF_BYCOMMAND | (startAtLogin_ ? MF_CHECKED : MF_UNCHECKED));
     CheckMenuItem(menu_, CMD_TOGGLE_TRAY_ENABLED, MF_BYCOMMAND | (config_.trayEnabled ? MF_CHECKED : MF_UNCHECKED));
+    CheckMenuItem(menu_, CMD_TOGGLE_VERBOSE_LOGGING, MF_BYCOMMAND | (config_.verboseLogging ? MF_CHECKED : MF_UNCHECKED));
 
     UINT artChecked = config_.artMode == "Custom" ? CMD_ART_MODE_CUSTOM
         : config_.artMode == "Off" ? CMD_ART_MODE_OFF : CMD_ART_MODE_AUTO;
@@ -495,6 +515,24 @@ void TrayIcon::HandleCommand(UINT id) {
         // effect, this class just flips the flag like any other toggle.
         config_.trayEnabled = !config_.trayEnabled;
         NotifyConfigChanged();
+        return;
+    }
+
+    if (id == CMD_TOGGLE_VERBOSE_LOGGING) {
+        config_.verboseLogging = !config_.verboseLogging;
+        NotifyConfigChanged();
+        return;
+    }
+
+    if (id == CMD_OPEN_APP_DIR) {
+        ShellExecuteW(hwnd_, L"open", core::GetConfigDirectory().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        return;
+    }
+
+    if (id == CMD_COPY_DIAGNOSTIC_INFO) {
+        if (OnBuildDiagnosticReport) {
+            platform_windows::SetClipboardText(hwnd_, OnBuildDiagnosticReport());
+        }
         return;
     }
 

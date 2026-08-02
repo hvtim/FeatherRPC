@@ -87,6 +87,12 @@ public:
     // last fetched, updating from the *next* time it's opened onward.
     std::function<std::vector<core::MediaSourceInfo>()> OnRefreshMediaSources;
 
+    // Fired when the user picks "Copy Diagnostic Info". Handler assembles
+    // the report (core::BuildDiagnosticReport - version, platform, config,
+    // a live media-source check, recent log lines, any crash report) and
+    // returns it; this class just puts the result on the clipboard.
+    std::function<std::wstring()> OnBuildDiagnosticReport;
+
 private:
     static constexpr UINT WM_TRAYICON = WM_APP + 1;
     static constexpr UINT WM_STATUSUPDATE = WM_APP + 2;
@@ -138,6 +144,7 @@ private:
     // reordering can't silently break which submenu gets updated.
     HMENU menu_ = nullptr;
     HMENU sourceMenu_ = nullptr;
+    HMENU settingsMenu_ = nullptr;
     HMENU artMenu_ = nullptr;
     HMENU pollMenu_ = nullptr;
 

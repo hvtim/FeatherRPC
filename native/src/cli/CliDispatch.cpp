@@ -29,7 +29,8 @@ void PrintUsage() {
         "  status\n"
         "  autostart get|on|off\n"
         "  daemon start|stop|restart\n"
-        "  config path\n";
+        "  config path\n"
+        "  log path\n";
 }
 
 core::AppConfig LoadConfig() {
@@ -339,6 +340,10 @@ int Run(const std::vector<std::string>& args, Hooks& hooks) {
     }
     if (command == "config" && args.size() >= 2 && args[1] == "path") {
         std::cout << core::GetConfigFilePath().string() << "\n";
+        return 0;
+    }
+    if (command == "log" && args.size() >= 2 && args[1] == "path") {
+        std::cout << core::GetLogFilePath().string() << "\n";
         return 0;
     }
 
