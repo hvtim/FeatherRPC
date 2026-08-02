@@ -6,7 +6,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Bump this alongside each release tag - shown in Windows' "Installed apps" list.
+# Shown in Windows' "Installed apps" list. The release workflow patches
+# this bundled copy's literal to the real release version at build time -
+# this checked-in value only matters for an ad-hoc manual/from-source run.
 $appVersion = "0.1.0"
 $exeName = "FeatherRPC.exe"
 

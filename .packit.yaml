@@ -1,0 +1,30 @@
+# Fires a COPR build (https://copr.fedorainfracloud.org/coprs/hvtim/featherrpc/)
+# whenever a GitHub Release is published - not on every commit or even
+# every tag push, since `trigger: release` specifically listens for the
+# "release published" webhook. This is deliberately separate from that
+# COPR project's own "Auto-rebuild" toggle (left off): that toggle governs
+# COPR's own webhook-driven rebuild against its SCM package's pinned `main`
+# committish, which would rebuild on every commit - not what we want here.
+# This job instead submits a build via the COPR API directly, authorized
+# through this repo already being whitelisted in the COPR project's
+# "Packit allowed forge projects" field.
+#
+# Prerequisite outside this file: the Packit GitHub App must be installed
+# on this repo/account for the release-published webhook to ever reach
+# Packit at all - a one-time manual step on GitHub's side.
+#
+# `targets` must match the chroots actually enabled on the COPR project
+# side (fedora-44-x86_64 / fedora-43-x86_64 as the baseline) - a mismatch
+# here means Packit fails against an unenabled chroot.
+specfile_path: packaging/copr/featherrpc.spec
+upstream_package_name: featherrpc
+downstream_package_name: featherrpc
+
+jobs:
+  - job: copr_build
+    trigger: release
+    owner: hvtim
+    project: featherrpc
+    targets:
+      - fedora-44-x86_64
+      - fedora-43-x86_64

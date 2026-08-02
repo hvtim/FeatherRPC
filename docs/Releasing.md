@@ -1,10 +1,28 @@
 # Releasing
 
-There's no checked-in release-packaging automation yet (no
-`.github/workflows/release*.yml`, no packaging script beyond what's under
-`installer/`) - releases are cut by hand. This is the checklist to follow:
-asset naming, how each asset gets built today, and the release notes
-template.
+Pushing a `vX.Y.Z` tag triggers `.github/workflows/release.yml`, which
+builds Windows/Linux/macOS assets and publishes a GitHub Release
+automatically - see "Cutting a release" below. The manual build commands
+further down in this document are the fallback/bypass path: rebuilding one
+broken asset by hand without re-running (or waiting on) the whole matrix,
+not the primary way releases happen. Read them as a runbook for CI,
+not a replacement for it.
+
+## Cutting a release
+
+1. Bump `FEATHERRPC_VERSION` in `native/CMakeLists.txt`.
+2. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [X.Y.Z] - <date>`,
+   and add a fresh empty `## [Unreleased]` above it.
+3. Commit both, merge to `main`.
+4. `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+CI fails immediately, before building anything, if `FEATHERRPC_VERSION`
+and the pushed tag disagree - this is the actual enforcement point that
+keeps every packaging file's version in sync (see "COPR / AUR" below for
+the one piece this doesn't reach).
+
+Don't trust a rewritten or newly-touched pipeline against the real tag on
+the first try - see "Testing the pipeline before trusting it" below.
 
 ## Asset naming
 
@@ -121,7 +139,11 @@ debug artifact:
 Upload each platform's debug artifact as an additional GitHub Release
 asset per version, reusing this doc's naming convention, e.g.:
 
-- `FeatherRPC-<version>-windows-x64.pdb.zip` (zip both `.pdb` files together)
+- `FeatherRPC-<version>-windows-x64.pdb.zip` and `-windows-arm64.pdb.zip`
+  (one per architecture, each zipping that architecture's own
+  `FeatherRPC.pdb`/`featherrpc-cli.pdb` pair - an arm64 crash can't be
+  symbolized against the x64 pdb, so these must stay separate, not
+  combined into one archive)
 - `FeatherRPC-<version>-macos-universal.dSYM.zip`
 - `FeatherRPC-<version>-linux-x86_64-unstripped.tar.gz`
 
@@ -129,6 +151,43 @@ so a maintainer can later pull the one matching a reported build's
 version/commit (`kBuildString` in the diagnostic report gives both) and
 symbolize a raw crash address against it, rather than guessing from an
 unrelated build's symbols.
+
+## COPR / AUR
+
+`packaging/copr/featherrpc.spec` derives its own `Version:` from
+`git describe --tags` against whatever tag Packit/COPR checks out - it
+never needs a manual version bump again. A GitHub Release publish (the
+`publish` job's last step) fires `.packit.yaml`'s `copr_build` job
+automatically; COPR's own "Auto-rebuild" toggle on the `hvtim/featherrpc`
+project stays off deliberately, since that toggles a different,
+every-commit-on-`main` rebuild path this project doesn't want.
+
+`packaging/aur/PKGBUILD`'s `pkgver` has no equivalent automation - AUR
+has no Packit-style integration this project uses. After each release,
+bump `pkgver` by hand, run `makepkg --printsrcinfo > .SRCINFO`, and push
+to the AUR git remote. This is the one release step that stays entirely
+manual; see issue #13.
+
+## Testing the pipeline before trusting it
+
+Push a throwaway pre-release tag first, e.g. `v0.1.2-rc1`, rather than
+trusting a new or changed release workflow against the real tag on the
+first attempt:
+
+- A pre-release tag's hyphenated suffix makes the GitHub Release
+  auto-mark itself as a prerelease (the `publish` job checks for a `-` in
+  the version).
+- The same suffix gets converted for COPR/RPM's benefit -
+  `v0.1.2-rc1` becomes RPM version `0.1.2~rc1` (`~` sorts before nothing,
+  correctly ordering a pre-release before its final release in RPM's
+  version comparison) - confirm the COPR build actually reflects that
+  string rather than failing `rpmbuild` outright on an invalid `Version:`.
+- Deliberately break one sanity check once (e.g. temporarily drop a
+  binary from an assembled archive) to confirm the workflow actually
+  fails loud instead of silently shipping - this is the direct
+  re-creation-and-fix of the exact incident issue #45 describes.
+- Delete the RC tag and its GitHub prerelease once satisfied, then cut
+  the real tag per "Cutting a release" above.
 
 ## Release notes template
 

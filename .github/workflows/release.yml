@@ -1,0 +1,346 @@
+# Builds and publishes a GitHub Release for all 3 platforms whenever a
+# `vX.Y.Z` (or `vX.Y.Z-rcN` for a pre-release dry run - see
+# docs/Releasing.md's "Testing the pipeline before trusting it" section)
+# tag is pushed. Before this workflow existed, every release asset was
+# assembled and uploaded by hand - see docs/Releasing.md for the full
+# history, including the incident (issue #45) that made this worth
+# building: a hand-assembled v0.1.1 Linux archive shipped missing the
+# `featherrpc` CLI binary entirely, caught only after publishing. The
+# per-platform sanity-check steps below exist specifically to catch that
+# exact class of mistake before it ever reaches a GitHub Release.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  prepare:
+    name: Prepare (version check + release notes)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version and check it matches CMakeLists.txt
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          CMAKE_VERSION=$(grep -oP 'set\(FEATHERRPC_VERSION "\K[^"]+' native/CMakeLists.txt)
+
+          # A pre-release tag (v0.1.2-rc1) has a base version (0.1.2) that
+          # must match CMakeLists.txt - the -rcN suffix is not itself part
+          # of FEATHERRPC_VERSION.
+          BASE_VERSION="${VERSION%%-*}"
+          if [ "$BASE_VERSION" != "$CMAKE_VERSION" ]; then
+            echo "::error::Tag $TAG (base version $BASE_VERSION) does not match native/CMakeLists.txt's FEATHERRPC_VERSION ($CMAKE_VERSION). Bump CMakeLists.txt and re-tag." >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract release notes from CHANGELOG.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          awk '/^## \[Unreleased\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "(No CHANGELOG.md [Unreleased] entries found for this release.)" > release-notes.md
+          fi
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+
+  windows:
+    name: Windows (x64 + arm64 installer, zips, symbols)
+    runs-on: windows-latest
+    needs: prepare
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Configure and build x64
+        run: |
+          cmake -B build-x64 -S native -A x64
+          cmake --build build-x64 --config Release
+
+      - name: Configure and build arm64
+        run: |
+          cmake -B build-arm64 -S native -A ARM64
+          cmake --build build-arm64 --config Release
+
+      - name: Build combined NSIS installer
+        shell: cmd
+        run: |
+          makensis /DAPP_DIR_X64="%CD%\build-x64\Release" /DAPP_DIR_ARM64="%CD%\build-arm64\Release" /DVERSION=${{ needs.prepare.outputs.version }} installer\windows\installer.nsi
+
+      - name: Assemble per-architecture zips
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          for ARCH in x64 arm64; do
+            STAGE="stage-$ARCH"
+            mkdir -p "$STAGE/app"
+            cp "build-$ARCH/Release/FeatherRPC.exe" "$STAGE/app/"
+            cp "build-$ARCH/Release/featherrpc-cli.exe" "$STAGE/app/"
+            cp installer/windows/install.bat installer/windows/uninstall.bat "$STAGE/"
+            # CI-patch the bundled copy's version comment/literal - the
+            # checked-in value in the repo only matters for an ad-hoc
+            # manual/from-source run, not what actually ships here.
+            sed "s/\$appVersion = \"0.1.0\"/\$appVersion = \"$VERSION\"/" installer/windows/install.ps1 > "$STAGE/install.ps1"
+            cp installer/windows/uninstall.ps1 "$STAGE/"
+            (cd "$STAGE" && 7z a -tzip "../FeatherRPC-$VERSION-windows-$ARCH.zip" .)
+          done
+
+      - name: Zip per-architecture debug symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          for ARCH in x64 arm64; do
+            (cd "build-$ARCH/Release" && 7z a -tzip "../../FeatherRPC-$VERSION-windows-$ARCH.pdb.zip" FeatherRPC.pdb featherrpc-cli.pdb)
+          done
+
+      - name: Sanity check assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          MIN_EXE_BYTES=1000000
+
+          INSTALLER="FeatherRPC-$VERSION-windows-installer.exe"
+          [ -f "$INSTALLER" ] || { echo "::error::Missing $INSTALLER"; exit 1; }
+          SIZE=$(stat -c%s "$INSTALLER")
+          [ "$SIZE" -ge "$MIN_EXE_BYTES" ] || { echo "::error::$INSTALLER is suspiciously small ($SIZE bytes)"; exit 1; }
+
+          for ARCH in x64 arm64; do
+            ZIP="FeatherRPC-$VERSION-windows-$ARCH.zip"
+            [ -f "$ZIP" ] || { echo "::error::Missing $ZIP"; exit 1; }
+            for MEMBER in app/FeatherRPC.exe app/featherrpc-cli.exe install.ps1 install.bat uninstall.ps1 uninstall.bat; do
+              7z l "$ZIP" | grep -q "$MEMBER" || { echo "::error::$ZIP is missing $MEMBER"; exit 1; }
+            done
+            PDBZIP="FeatherRPC-$VERSION-windows-$ARCH.pdb.zip"
+            [ -f "$PDBZIP" ] || { echo "::error::Missing $PDBZIP"; exit 1; }
+          done
+          echo "Windows assets look correct."
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-assets
+          path: |
+            FeatherRPC-*-windows-installer.exe
+            FeatherRPC-*-windows-x64.zip
+            FeatherRPC-*-windows-arm64.zip
+            FeatherRPC-*-windows-x64.pdb.zip
+            FeatherRPC-*-windows-arm64.pdb.zip
+
+  linux:
+    name: Linux (AppImage + tarball, unstripped archive)
+    # Deliberately ubuntu-latest, never a Windows/macOS runner: FeatherRPC
+    # and featherrpc are two distinct binaries that collide as the same
+    # file on a case-insensitive filesystem (NTFS, APFS default mode) -
+    # confirmed the hard way this same project's own dev history, both in
+    # the v0.1.1 release-packaging incident this workflow exists to
+    # prevent (issue #45) and independently, again, in a contributor's own
+    # WSL-on-a-Windows-mounted-path build environment. A real Linux
+    # filesystem is the only setting where these two names are safe.
+    runs-on: ubuntu-latest
+    needs: prepare
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ ninja-build libglib2.0-dev libdbus-1-dev libcurl4-openssl-dev desktop-file-utils
+
+      - name: Configure and build
+        run: |
+          cmake -B native/build -S native -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build native/build
+
+      - name: Archive unstripped binaries
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          tar czf "FeatherRPC-$VERSION-linux-x86_64-unstripped.tar.gz" \
+            -C native/build FeatherRPC featherrpc
+
+      - name: Build AppImage
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}" packaging/appimage/build-appimage.sh native/build
+
+      - name: Assemble Linux tarball
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          mkdir -p stage/app
+          cp native/build/FeatherRPC native/build/featherrpc stage/app/
+          cp assets/icon.png stage/app/icon.png
+          cp installer/linux/install.sh installer/linux/uninstall.sh stage/
+          # CI-patch the bundled copy's version comment - the checked-in
+          # value in the repo is unused (APP_VERSION is a dead variable
+          # today) but keep it accurate anyway for anyone reading the
+          # bundled copy directly.
+          sed -i "s/APP_VERSION=\"0.1.0\"/APP_VERSION=\"$VERSION\"/" stage/install.sh
+          chmod +x stage/install.sh stage/uninstall.sh stage/app/FeatherRPC stage/app/featherrpc
+          (cd stage && tar czf "../FeatherRPC-$VERSION-linux-x86_64.tar.gz" install.sh uninstall.sh app/)
+
+      - name: Sanity check assets
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          APPIMAGE="FeatherRPC-$VERSION-x86_64.AppImage"
+          [ -f "$APPIMAGE" ] || { echo "::error::Missing $APPIMAGE"; exit 1; }
+
+          TARBALL="FeatherRPC-$VERSION-linux-x86_64.tar.gz"
+          [ -f "$TARBALL" ] || { echo "::error::Missing $TARBALL"; exit 1; }
+          LISTING=$(tar tvf "$TARBALL")
+          for MEMBER in install.sh uninstall.sh app/FeatherRPC app/featherrpc; do
+            echo "$LISTING" | grep -q "$MEMBER\$" || { echo "::error::$TARBALL is missing $MEMBER"; exit 1; }
+          done
+          # Confirm executable bits survived - this is the exact class of
+          # bug this doc's Linux-archive-format section exists to prevent.
+          for MEMBER in install.sh uninstall.sh app/FeatherRPC app/featherrpc; do
+            echo "$LISTING" | grep "$MEMBER\$" | grep -q '^-rwx' || { echo "::error::$MEMBER in $TARBALL is missing its executable bit"; exit 1; }
+          done
+
+          UNSTRIPPED="FeatherRPC-$VERSION-linux-x86_64-unstripped.tar.gz"
+          [ -f "$UNSTRIPPED" ] || { echo "::error::Missing $UNSTRIPPED"; exit 1; }
+          echo "Linux assets look correct."
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-assets
+          path: |
+            FeatherRPC-*-x86_64.AppImage
+            FeatherRPC-*-linux-x86_64.tar.gz
+            FeatherRPC-*-linux-x86_64-unstripped.tar.gz
+
+  macos:
+    name: macOS (unsigned universal dmg + dSYM)
+    # First-ever CI exercise of this path - installer/macos/build-dmg.sh
+    # has only ever been run once before, by hand, on a Mac VM. Ships
+    # unsigned/unnotarized: no Apple Developer account exists (issue #29),
+    # same posture already documented in installer/macos/README.md.
+    runs-on: macos-latest
+    needs: prepare
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure and build
+        run: |
+          cmake -B native/build -S native -DCMAKE_BUILD_TYPE=Release
+          cmake --build native/build --config Release
+
+      - name: Build dmg
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          installer/macos/build-dmg.sh --app "native/build/FeatherRPC.app" \
+            --output "FeatherRPC-$VERSION-macos-universal.dmg" \
+            --no-finder-layout
+
+      - name: Zip dSYM
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          DSYM=$(find native/build -maxdepth 1 -name '*.dSYM' | head -n1)
+          [ -n "$DSYM" ] || { echo "::error::No .dSYM found under native/build - is the POST_BUILD dsymutil step wired up?"; exit 1; }
+          ditto -c -k --sequesterRsrc "$DSYM" "FeatherRPC-$VERSION-macos-universal.dSYM.zip"
+
+      - name: Sanity check assets
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          MIN_DMG_BYTES=1000000
+
+          DMG="FeatherRPC-$VERSION-macos-universal.dmg"
+          [ -f "$DMG" ] || { echo "::error::Missing $DMG"; exit 1; }
+          SIZE=$(stat -f%z "$DMG")
+          [ "$SIZE" -ge "$MIN_DMG_BYTES" ] || { echo "::error::$DMG is suspiciously small ($SIZE bytes)"; exit 1; }
+
+          MOUNT_DIR=$(mktemp -d)
+          hdiutil attach "$DMG" -mountpoint "$MOUNT_DIR" -nobrowse -quiet
+          trap 'hdiutil detach "$MOUNT_DIR" -quiet || true' EXIT
+          [ -d "$MOUNT_DIR/FeatherRPC.app" ] || { echo "::error::$DMG doesn't contain FeatherRPC.app"; exit 1; }
+          [ -L "$MOUNT_DIR/Applications" ] || { echo "::error::$DMG is missing the Applications symlink"; exit 1; }
+          hdiutil detach "$MOUNT_DIR" -quiet
+          trap - EXIT
+
+          DSYMZIP="FeatherRPC-$VERSION-macos-universal.dSYM.zip"
+          [ -s "$DSYMZIP" ] || { echo "::error::Missing or empty $DSYMZIP"; exit 1; }
+          echo "macOS assets look correct."
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-assets
+          path: |
+            FeatherRPC-*-macos-universal.dmg
+            FeatherRPC-*-macos-universal.dSYM.zip
+
+  publish:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [prepare, windows, linux, macos]
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: FeatherRPC ${{ needs.prepare.outputs.version }}
+          body_path: assets/release-notes.md
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          files: |
+            assets/FeatherRPC-*-windows-installer.exe
+            assets/FeatherRPC-*-windows-x64.zip
+            assets/FeatherRPC-*-windows-arm64.zip
+            assets/FeatherRPC-*-windows-x64.pdb.zip
+            assets/FeatherRPC-*-windows-arm64.pdb.zip
+            assets/FeatherRPC-*-x86_64.AppImage
+            assets/FeatherRPC-*-linux-x86_64.tar.gz
+            assets/FeatherRPC-*-linux-x86_64-unstripped.tar.gz
+            assets/FeatherRPC-*-macos-universal.dmg
+            assets/FeatherRPC-*-macos-universal.dSYM.zip

@@ -30,7 +30,7 @@ clicking through Finder.
 
 2. Run the packaging script against that bundle:
    ```
-   installer/macos/build-dmg.sh --app path/to/FeatherRPC.app --output FeatherRPC-0.1.2-macos.dmg
+   installer/macos/build-dmg.sh --app path/to/FeatherRPC.app --output FeatherRPC-0.1.2-macos-universal.dmg
    ```
    This produces a compressed `.dmg` with `FeatherRPC.app` and an
    `Applications` symlink, both visible in a styled Finder window when
