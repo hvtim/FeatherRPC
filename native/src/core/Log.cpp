@@ -13,17 +13,9 @@ namespace {
 constexpr uintmax_t kMaxSizeBytes = 2 * 1024 * 1024;
 constexpr int kMaxBackups = 3; // featherrpc.log.1 .. featherrpc.log.3
 
-// Renames path -> path.1, path.1 -> path.2, ... dropping the oldest -
-// replaces the old "delete everything once it crosses the size limit"
-// behavior, which destroyed all history right when a rare bug needed it
-// most. Called from inside Write()'s existing best-effort try/catch, so a
-// rename failure here is swallowed the same way a write failure already
-// was - never let logging problems take down the app.
-//
-// Takes the persistent file handle by reference: it must close it before
-// renaming (Windows won't rename a file that's still open under a plain
-// std::ofstream - no FILE_SHARE_DELETE), then reopen a fresh handle
-// pointing at the new, post-rotation path once the renames are done.
+// Renames path -> path.1, path.1 -> path.2, ... dropping the oldest.
+// Closes the file handle before renaming (Windows can't rename an open
+// file without FILE_SHARE_DELETE) and reopens after.
 void RotateIfNeeded(const std::filesystem::path& path, std::ofstream& file) {
     std::error_code ec;
     if (!std::filesystem::exists(path, ec) || std::filesystem::file_size(path, ec) <= kMaxSizeBytes) {
@@ -59,11 +51,7 @@ std::ofstream Log::s_file;
 
 void Log::Init(std::filesystem::path logFilePath) {
     s_path = std::move(logFilePath);
-    // Windows installs never hit this gap in practice (the config dir was
-    // always created earlier by a prior install's SaveConfig), but a
-    // first-ever run on a fresh machine has no such directory yet -
-    // std::ofstream silently no-ops on a missing parent, so Write() would
-    // otherwise drop every log line without any indication why.
+    // std::ofstream silently no-ops on a missing parent dir.
     std::error_code ec;
     std::filesystem::create_directories(s_path.parent_path(), ec);
     s_file.open(s_path, std::ios::app);
@@ -78,13 +66,8 @@ bool Log::IsVerbose() {
 }
 
 void Log::Write(const std::string& message) {
-    // Populate the crash ring buffer first, unconditionally, before taking
-    // any lock - this must never be starved by a slow/blocked file write,
-    // since its entire purpose is being readable from a crash handler that
-    // may fire mid-Write() on another thread. A direct bounded copy, not
-    // snprintf("%s") - this runs on every single Write() call across every
-    // thread in the process, and there's no format string to actually
-    // parse here, just a truncating copy.
+    // Populate the crash ring buffer before taking any lock - it must
+    // stay readable from a crash handler that could fire mid-Write().
     uint32_t idx = g_crashRing.writeIndex.fetch_add(1, std::memory_order_relaxed) % kCrashRingSlots;
     size_t copyLen = std::min(message.size(), kCrashRingSlotSize - 1);
     std::memcpy(g_crashRing.slots[idx], message.data(), copyLen);
@@ -102,12 +85,8 @@ void Log::Write(const std::string& message) {
         RotateIfNeeded(s_path, s_file);
 
         if (!s_file.good()) {
-            // The persistent handle can end up in a fail state (a
-            // transient I/O error, or something external touching the
-            // file) - the old per-call-fresh-ofstream code recovered from
-            // this for free every time; give the persistent handle one
-            // explicit recovery attempt instead of staying broken for the
-            // rest of the process's life.
+            // Recover from a transient I/O error rather than staying
+            // broken for the rest of the process's life.
             s_file.close();
             s_file.clear();
             s_file.open(s_path, std::ios::app);
@@ -127,15 +106,11 @@ void Log::Write(const std::string& message) {
         std::strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tmBuf);
 
         s_file << timestamp << " " << message << "\n";
-        // Explicit flush, not left to the OS's own buffering - the file
-        // handle is now long-lived instead of being destroyed (and
-        // therefore flushed) after every single line, so without this a
-        // crash could lose log lines that were only ever sitting in the
-        // stream's userspace buffer, defeating the point of a log
-        // maintained specifically for post-crash diagnosis.
+        // The handle is long-lived now, not destroyed (and flushed) per
+        // line - flush explicitly so a crash can't lose buffered lines.
         s_file.flush();
     } catch (const std::exception&) {
-        // Logging is best-effort - never let a log write failure take down the app.
+        // Logging is best-effort.
     }
 }
 

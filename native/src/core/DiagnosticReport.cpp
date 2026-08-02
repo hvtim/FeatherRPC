@@ -33,12 +33,7 @@ std::string BuildDiagnosticReport(const DiagnosticReportInputs& inputs) {
     out << "\n";
 
     out << "-- Config --\n";
-    // Discord Application IDs are public identifiers, not secrets (unlike
-    // a bot token/client secret, neither of which this app ever stores) -
-    // see docs/KnownIssues.md's "Client ID masking" entry for the project's
-    // own final conclusion on this after some back-and-forth. Included
-    // unredacted since a maintainer diagnosing an ID-specific bug
-    // genuinely needs it.
+    // Not a secret - see docs/KnownIssues.md "Client ID masking".
     out << "Client ID: " << inputs.config.clientId << "\n";
     out << "Media source: " << inputs.config.mediaSource << "\n";
     out << "Poll interval: " << inputs.config.pollIntervalMs << "ms\n";

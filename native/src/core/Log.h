@@ -17,26 +17,19 @@ public:
     static void Init(std::filesystem::path logFilePath);
     static void Write(const std::string& message);
 
-    // Verbose Logging (tray Settings toggle) - gates extra per-poll detail
-    // in PresenceEngine and the media-source implementations. Not used by
-    // Write() itself; callers check IsVerbose() before deciding whether to
-    // call Write() at all for a given line.
+    // Gates extra per-poll detail in PresenceEngine and media sources.
+    // Callers check IsVerbose() themselves before calling Write().
     static void SetVerbose(bool verbose);
     static bool IsVerbose();
 
 private:
     static std::filesystem::path s_path;
-    // Guards both the stdout write and the file-write section below -
     // Write() is called concurrently from PresenceEngine's worker thread,
-    // the tray's media-source-refresh thread, and the UI/main thread, with
-    // no synchronization previously; this fixes interleaved-line output
-    // and a TOCTOU race in the old size-check-then-truncate logic.
+    // the tray's media-refresh thread, and the UI thread.
     static std::mutex s_mutex;
     static std::atomic<bool> s_verbose;
-    // Opened once in Init(), reused across every Write() call instead of
-    // opening/closing a fresh handle per line - only closed/reopened when
-    // RotateIfNeeded() actually rotates. Always accessed under s_mutex, so
-    // no separate synchronization of its own is needed.
+    // Opened once in Init(), reused across writes; only closed/reopened
+    // when RotateIfNeeded() rotates. Always accessed under s_mutex.
     static std::ofstream s_file;
 };
 

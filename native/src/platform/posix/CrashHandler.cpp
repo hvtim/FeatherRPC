@@ -14,28 +14,13 @@
 #include <cstdint>
 #include <cstring>
 
-// A POSIX signal handler can interrupt genuinely arbitrary code at any
-// instruction boundary - including malloc() mid-operation while it holds
-// its own internal lock. Calling malloc/new (directly, or indirectly via
-// std::string, snprintf, iostream, etc.) from inside this handler risks
-// deadlocking the crashing thread against itself instead of ever
-// producing a report. Every function in this file is restricted to the
-// small set of functions POSIX guarantees are async-signal-safe
-// (signal-safety(7)): write(), uname(), time(), backtrace() and
-// backtrace_symbols_fd() specifically - NOT backtrace_symbols(), which
-// does call malloc to build its returned string array - fsync(), signal(),
-// and raise(). No snprintf/strftime/localtime - timestamps are raw epoch
-// seconds via time(), not a formatted date, for the same reason.
-//
-// Formatting is entirely hand-rolled onto fixed stack buffers - no heap
-// allocation anywhere in this file. See DaemonSignal.cpp's own comment
-// for why *that* file avoids this entirely by using sigwait() on a
-// dedicated thread instead: SIGHUP/SIGTERM/SIGINT are signals this
-// process can defer indefinitely, so there's no need to do real work
-// inside an actual handler. SIGSEGV/SIGABRT/SIGFPE/SIGILL/SIGBUS can't be
-// deferred that way - the whole point is capturing state at the instant
-// of the fault - so this file has no choice but to do real, careful work
-// inside the handler itself.
+// A signal handler can interrupt malloc() mid-operation while it holds its
+// own lock, so malloc/new (directly or via std::string/snprintf/iostream)
+// risks deadlock here. Restricted to POSIX async-signal-safe functions
+// only (signal-safety(7)): write(), uname(), time(), backtrace(), and
+// backtrace_symbols_fd() specifically (not backtrace_symbols(), which
+// mallocs). No snprintf/strftime - timestamps are raw epoch seconds.
+// All formatting is hand-rolled onto fixed stack buffers.
 
 namespace platform_posix {
 
@@ -43,25 +28,18 @@ namespace {
 
 int g_crashFd = -1;
 
-// Guards against two threads faulting at nearly the same time and
-// interleaving garbage into the same file - not a mutex (locking a mutex
-// here would have the exact same reentrancy risk as malloc), just a
-// lock-free "first one in wins" gate. A losing thread just re-raises
-// immediately with the default disposition rather than writing anything.
+// Not a mutex (same reentrancy risk as malloc) - a lock-free "first one
+// in wins" gate against two threads interleaving into the same file.
 std::atomic_flag g_handling = ATOMIC_FLAG_INIT;
 
-// 64KB, comfortably above every platform's documented minimum
-// (MINSIGSTKSZ/SIGSTKSZ) - a dedicated signal stack is required for
-// SIGSEGV specifically, since a stack-overflow fault has no usable space
-// left on the thread's own stack to run a handler on at all.
+// A dedicated signal stack is required for SIGSEGV specifically - a
+// stack-overflow fault leaves no usable space on the thread's own stack.
 alignas(16) char g_altStackBuf[65536];
 
 void WriteRaw(const char* text, size_t len) {
     if (g_crashFd < 0 || len == 0) {
         return;
     }
-    // write() can do a short write even outside a signal handler; looping
-    // costs nothing and this must not silently drop the tail of a report.
     size_t written = 0;
     while (written < len) {
         ssize_t n = write(g_crashFd, text + written, len - written);
@@ -99,8 +77,7 @@ void WriteHex(uintptr_t value) {
 void WriteDec(long value) {
     if (value < 0) {
         WriteRaw("-");
-        // Careful with LONG_MIN, whose magnitude doesn't fit in a
-        // positive long - unsigned long can hold it either way.
+        // LONG_MIN's magnitude doesn't fit in a positive long.
         unsigned long mag = static_cast<unsigned long>(-(value + 1)) + 1UL;
         value = 0;
         char digits[20];
@@ -209,28 +186,19 @@ void CrashHandlerImpl(int sig, siginfo_t* info, void* /*ucontext*/) {
         WriteRaw("\n-- Backtrace (symbolize offline against the matching unstripped binary; see docs/Releasing.md) --\n");
         void* frames[32];
         int frameCount = backtrace(frames, 32);
-        // backtrace_symbols_fd(), not backtrace_symbols() - the _fd variant
-        // writes straight to the descriptor with no malloc; the non-_fd
-        // one mallocs an array of strings to return, which isn't safe here.
         backtrace_symbols_fd(frames, frameCount, g_crashFd);
 
         WriteRaw("\n-- Recent log lines (best-effort; a line may be torn if the crash landed mid-write) --\n");
         WriteRecentLog();
 
-        // Truncate anything left over from a shorter previous report - the
-        // fd was opened once at startup without O_TRUNC (so a crash from a
-        // *previous* session survives until the user's read it via Copy
-        // Diagnostic Info), so this is the only point old content is
-        // actually discarded, and only up to this new report's length.
+        // Truncate to this report's length - opened without O_TRUNC so a
+        // previous session's crash survives until read.
         ftruncate(g_crashFd, lseek(g_crashFd, 0, SEEK_CUR));
         fsync(g_crashFd);
     }
 
-    // Restore the default disposition and re-raise, rather than _exit()
-    // here directly - lets the OS's own crash capture (coredumpctl on
-    // Linux, ~/Library/Logs/DiagnosticReports on macOS) still fire too,
-    // same as the Windows crash handler returning EXCEPTION_EXECUTE_HANDLER
-    // rather than swallowing the fault silently.
+    // Re-raise with default disposition (not _exit()) so the OS's own
+    // crash capture (coredumpctl/DiagnosticReports) still fires too.
     signal(sig, SIG_DFL);
     raise(sig);
 }
@@ -238,9 +206,7 @@ void CrashHandlerImpl(int sig, siginfo_t* info, void* /*ucontext*/) {
 }  // namespace
 
 void InstallCrashHandler() {
-    // O_CREAT without O_TRUNC: must not discard a crash report left behind
-    // by a previous session before this session's user has had a chance
-    // to read it via Copy Diagnostic Info.
+    // No O_TRUNC: don't discard a previous session's unread crash report.
     g_crashFd = open(core::GetCrashFilePath().c_str(), O_WRONLY | O_CREAT, 0644);
 
     stack_t altStack;

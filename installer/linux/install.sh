@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The release workflow patches this bundled copy's literal to the real
-# release version at build time - this checked-in value only matters for
-# an ad-hoc manual/from-source run. (Currently unused below - APP_VERSION
-# isn't referenced after assignment - kept accurate anyway.)
+# The release workflow patches this to the real version at build time.
+# Unused below - kept accurate anyway.
 APP_VERSION="0.1.0"
 EXE_NAME="FeatherRPC"
 

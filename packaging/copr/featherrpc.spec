@@ -1,9 +1,4 @@
-# Derived from whichever tag is checked out (COPR's rpkg SCM build method
-# clones a real .git/, not a tarball, so `git describe` works at
-# spec-parse time) instead of a hand-maintained literal - this is what
-# lets a new GitHub release tag build here with zero spec edits. A
-# pre-release suffix (v0.1.2-rc1) becomes 0.1.2~rc1: RPM's own
-# pre-release-ordering syntax, since Version: can't contain a literal "-".
+# Derived from the checked-out git tag - no manual bump needed per release.
 %global upstream_version %(git describe --tags --abbrev=0 2>/dev/null | sed -e 's/^v//' -e 's/-/~/' || echo 0.0.0)
 
 Name:           featherrpc
@@ -13,11 +8,6 @@ Summary:        Syncs now-playing media to Discord as a Rich Presence status
 
 License:        GPL-3.0-or-later
 URL:            https://github.com/hvtim/FeatherRPC
-# GitHub's tag-archive endpoint is a single path segment
-# (.../archive/refs/tags/vX.Y.Z.tar.gz) - the previous URL here had an
-# extra /FeatherRPC-%{version}.tar.gz segment that isn't a real GitHub
-# route. The #/name.tar.gz suffix below is RPM's own local-cache-filename
-# syntax, not part of the URL.
 Source0:        https://github.com/hvtim/FeatherRPC/archive/refs/tags/v%{version}.tar.gz#/FeatherRPC-%{version}.tar.gz
 
 BuildRequires:  cmake

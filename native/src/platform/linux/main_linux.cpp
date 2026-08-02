@@ -49,10 +49,8 @@ std::string OsDescription() {
     return std::string(uts.sysname) + " " + uts.release + " " + uts.machine;
 }
 
-// Called only from Copy Diagnostic Info, never from the poll loop - the
-// actual answer to "how do we tell 'wrong source picked' apart from 'the
-// app is broken'": re-queries live MPRIS state right at report-generation
-// time instead of depending on historical log noise.
+// Called only from Copy Diagnostic Info - re-queries live MPRIS state
+// on demand instead of depending on historical log noise.
 std::string LiveMediaSourceCheck(const core::AppConfig& config) {
     std::ostringstream out;
     if (config.mediaSource.empty()) {
@@ -101,13 +99,8 @@ std::optional<std::string> ReadCrashReportIfPresent() {
     out << file.rdbuf();
     std::string content = out.str();
     if (content.empty()) {
-        // InstallCrashHandler() creates this file on every single launch
-        // (O_CREAT, so a genuine crash from a *previous* session survives
-        // to be read here) - an empty file just means the file has always
-        // existed but nothing has ever actually crashed, not a crash with
-        // no content. Treating that as "no report" is what makes the
-        // trailing section disappear entirely on a machine that's never
-        // crashed, instead of showing up with a confusing blank body.
+        // The file exists on every launch (O_CREAT) even with no crash -
+        // an empty file means no crash, not an empty report.
         return std::nullopt;
     }
     return content;
@@ -139,10 +132,7 @@ int main(int argc, char** argv) {
     core::Log::Init(core::GetLogFilePath());
     core::Log::Write(std::string("FeatherRPC starting... (") + core::kBuildString + ")");
 
-    // As early as possible after Log::Init - the crash file descriptor and
-    // sigaltstack are both set up here, up front, so the handler itself
-    // never has to do anything beyond strictly async-signal-safe work.
-    // See CrashHandler.cpp for the full design rationale.
+    // As early as possible so the handler only ever needs async-signal-safe work. See CrashHandler.cpp.
     platform_posix::InstallCrashHandler();
 
     // First thing, before touching config/engine/tray - refuses to start

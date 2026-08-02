@@ -28,75 +28,54 @@ each platform before relying on this.
 3. Right-click the tray icon, paste the Application ID, and set any other
    preferences from the same menu (see [Tray menu](#tray-menu) below).
 
-The Discord desktop app has to be running - Rich Presence connects to it
-locally, not through the browser.
+The Discord desktop app has to be running.
 
 ## Install
 
+Downloads: [latest release](../../releases/latest).
+
 ### Windows
 
-#### Installer (recommended)
+Run `FeatherRPC-<version>-windows-installer.exe`. Installs to
+`%LOCALAPPDATA%\FeatherRPC`.
 
-Download `FeatherRPC-<version>-windows-installer.exe` from the
-[latest release](../../releases/latest) and run it - it detects your CPU
-architecture automatically. Installs to `%LOCALAPPDATA%\FeatherRPC`.
+Windows will show a "Windows protected your PC" screen - click "More
+info", then "Run anyway". FeatherRPC isn't code-signed yet.
 
-Windows will likely show a blue "Windows protected your PC" screen: this
-is expected, not a sign anything's wrong - FeatherRPC just isn't
-code-signed yet. Click "More info" then "Run anyway" to continue.
-
-#### Zip
-
-Portable, no install wizard - for scripted setups or people who'd rather
-not run an installer. Download and extract
-`FeatherRPC-<version>-windows-x64.zip` (`-arm64` on ARM64 Windows) from
-the [latest release](../../releases/latest), then:
-
-```
-install.bat
-```
+Prefer a zip? Extract `FeatherRPC-<version>-windows-x64.zip` (`-arm64` on
+ARM64) and run `install.bat`.
 
 ### Linux
 
-#### AppImage
-
-No install step, no dependencies beyond what most desktops already have
-(`glib2`, `dbus`, `curl`). Download from the
-[latest release](../../releases/latest), then:
+AppImage:
 
 ```bash
 chmod +x FeatherRPC-*.AppImage
 ./FeatherRPC-*.AppImage
 ```
 
-#### Install script
-
-Installs to `~/.local/share/FeatherRPC`, sets up autostart, and puts the
-`featherrpc` CLI on `$PATH`. Download and extract
-`FeatherRPC-<version>-linux-x86_64.tar.gz` from the
-[latest release](../../releases/latest), then:
-
-```bash
-./install.sh
-```
+Or extract `FeatherRPC-<version>-linux-x86_64.tar.gz` and run
+`./install.sh` - installs to `~/.local/share/FeatherRPC`, sets up
+autostart, adds `featherrpc` to `$PATH`.
 
 ### macOS
 
-No prebuilt binary yet - see [docs/Building.md](docs/Building.md) to
-build from source.
+Open `FeatherRPC-<version>-macos-universal.dmg` and drag FeatherRPC to
+Applications.
+
+Unsigned, so macOS blocks the first launch - right-click the app, choose
+Open, confirm.
 
 ## Tray menu
 
 Right-click the tray icon:
 
-- Set Discord Application ID
 - Media source
 - Broadcast on/off
-- Show track number on/off
-- Album art settings (see [docs/AlbumArt.md](docs/AlbumArt.md))
-- Poll interval
-- Start at login
-- Show tray icon (applies on next launch)
+- Settings - Discord Application ID, track number, album art (see
+  [docs/AlbumArt.md](docs/AlbumArt.md)), poll interval, start at login,
+  tray icon, verbose logging
+- Copy Diagnostic Info (see [CONTRIBUTING.md](CONTRIBUTING.md))
 
 ## CLI control
 
@@ -116,16 +95,9 @@ Run the app itself with `--no-tray` for headless mode.
 
 ## How it works
 
-- Native C++, no runtime, no bundled GUI toolkit. Idle memory use is a
-  few megabytes.
-- Polls the selected media source every 2 seconds (COM for iTunes on
-  Windows, C++/WinRT SMTC for other Windows apps, MPRIS/D-Bus on Linux,
-  Scripting Bridge for Music.app on macOS or a MediaRemote-based
-  workaround for any other Mac app).
-- Sends a "Listening to" Rich Presence activity with a live progress bar,
-  over Discord's local IPC protocol.
-- Looks up cover art automatically (Apple's iTunes Search API, then
-  MusicBrainz + Cover Art Archive). See [docs/AlbumArt.md](docs/AlbumArt.md).
+- Native C++, no runtime. Idle memory use is a few megabytes.
+- Shows a "Listening to" status with a live progress bar.
+- Looks up cover art automatically. See [docs/AlbumArt.md](docs/AlbumArt.md).
 - Spotify is excluded - it has its own Discord integration.
 
 ## Known limitations
@@ -140,8 +112,7 @@ Full detail in [docs/KnownIssues.md](docs/KnownIssues.md). Headlines:
 - Linux tray rendering is confirmed on KDE Plasma 6; other desktop
   environments are untested.
 - Windows ARM64 compiles but has never run on real ARM64 hardware.
-- No Windows *service* here - Session 0 isolation blocks access to the
-  interactive user's iTunes/SMTC session.
+- No Windows service.
 - No code signing on any platform.
 
 ## License

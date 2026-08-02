@@ -6,13 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
 
-# Single source of truth for the app's own version string (also used for
-# the macOS bundle properties below) - the git commit hash portion of
-# Version.h is regenerated on every build, not just reconfigure, since
-# GenerateVersionHeader.cmake runs as an ALL custom target rather than at
-# CMake-configure time (see that script's own comment for why a plain
-# configure_file() alone wouldn't keep the hash fresh across builds with
-# no CMakeLists.txt/source-file changes).
+# Single source of truth for the app's version - also feeds the macOS
+# bundle properties below. See GenerateVersionHeader.cmake.
 set(FEATHERRPC_VERSION "0.1.2")
 
 set(FEATHERRPC_GENERATED_DIR "${CMAKE_BINARY_DIR}/generated")
@@ -78,15 +73,9 @@ if(WIN32)
         _UNICODE
         WIN32_LEAN_AND_MEAN
         NOMINMAX
-        # C++/WinRT's coroutine support falls back to <experimental/coroutine>
-        # under this project's C++17 standard (the C++20 <coroutine> path
-        # needs a newer standard). Newer MSVC releases turn that fallback's
-        # own deprecation notice into a hard error (C2338) rather than a
-        # warning - confirmed on GitHub's windows-latest runner image
-        # (VS "18 2026", MSVC 19.51) - so this is Microsoft's own documented
-        # opt-out for that specific transition period, not a general
-        # deprecation-silencing hammer. Remove once/if the project moves to
-        # C++20, which would use <coroutine> instead and make this moot.
+        # C++/WinRT falls back to <experimental/coroutine> under C++17;
+        # newer MSVC (19.51+) turns its deprecation notice into a hard
+        # error (C2338). Moot once/if this project moves to C++20.
         _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
     )
 
@@ -158,8 +147,7 @@ if(WIN32)
         _UNICODE
         WIN32_LEAN_AND_MEAN
         NOMINMAX
-        # See the matching comment on featherrpc-native's compile
-        # definitions above - same C++/WinRT coroutine fallback issue.
+        # See featherrpc-native's compile definitions above.
         _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
     )
 

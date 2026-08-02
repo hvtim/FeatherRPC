@@ -49,10 +49,9 @@ clicking through Finder.
 3. Attach the resulting `.dmg` to the GitHub release alongside the Windows
    zip and Linux tarball.
 
-There's no CI workflow doing this automatically - there's no Mac runner
-available to test one against. Steps 1-2 have now been run for real
-(via a Mac VM, not CI) - see [docs/KnownIssues.md](../../docs/KnownIssues.md)
-for what that testing did and didn't cover.
+`.github/workflows/release.yml` now runs steps 1-2 automatically on
+every tagged release, on GitHub's own macOS runners. This section is the
+manual fallback if you need to rebuild the `.dmg` outside that workflow.
 
 ## Known limitations
 
