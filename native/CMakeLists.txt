@@ -78,6 +78,16 @@ if(WIN32)
         _UNICODE
         WIN32_LEAN_AND_MEAN
         NOMINMAX
+        # C++/WinRT's coroutine support falls back to <experimental/coroutine>
+        # under this project's C++17 standard (the C++20 <coroutine> path
+        # needs a newer standard). Newer MSVC releases turn that fallback's
+        # own deprecation notice into a hard error (C2338) rather than a
+        # warning - confirmed on GitHub's windows-latest runner image
+        # (VS "18 2026", MSVC 19.51) - so this is Microsoft's own documented
+        # opt-out for that specific transition period, not a general
+        # deprecation-silencing hammer. Remove once/if the project moves to
+        # C++20, which would use <coroutine> instead and make this moot.
+        _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
     )
 
     target_link_libraries(featherrpc-native PRIVATE
@@ -148,6 +158,9 @@ if(WIN32)
         _UNICODE
         WIN32_LEAN_AND_MEAN
         NOMINMAX
+        # See the matching comment on featherrpc-native's compile
+        # definitions above - same C++/WinRT coroutine fallback issue.
+        _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
     )
 
     target_link_libraries(featherrpc-cli PRIVATE
