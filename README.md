@@ -8,8 +8,7 @@ Music, VLC, your browser, and more.
 
 - Windows: iTunes, VLC, browsers, or anything else that reports
   now-playing info to the system.
-- Linux: most media players (anything using MPRIS, the standard most
-  Linux apps support).
+- Linux: most media players.
 - macOS: Music.app, or any other app via macOS's own Now Playing.
 
 > Built with the help of [Claude Code](https://claude.com/claude-code)
@@ -120,6 +119,4 @@ Full detail in [docs/KnownIssues.md](docs/KnownIssues.md). Headlines:
 GPL-3.0. See [LICENSE](LICENSE).
 
 [native/third_party/nlohmann/json.hpp](native/third_party/nlohmann/json.hpp)
-is a bundled third-party dependency and remains under its own MIT license
-(see the notice at the top of that file) - relicensing FeatherRPC's own
-code doesn't relicense code this project didn't write.
+is a bundled third-party dependency and stays under its own MIT license.
