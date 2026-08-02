@@ -81,12 +81,9 @@ std::string OsDescription() {
     return osName + " (build " + std::to_string(buildNumber) + "), " + arch;
 }
 
-// Called only from Copy Diagnostic Info, never from the poll loop - a
-// fresh, on-demand check at report-generation time, not something logged
-// on every poll. This is the actual fix for "picked the wrong media
-// source, thinks it's a bug": states plainly whether the currently
-// configured source has anything active right now, and what else is
-// actually available if not.
+// Called only from Copy Diagnostic Info - an on-demand check, not logged
+// per poll, stating whether the selected source has anything active and
+// what else is available.
 std::string LiveMediaSourceCheck(const core::AppConfig& config) {
     std::ostringstream out;
     out << "Currently selected media source: " << config.mediaSource << ". ";
@@ -112,10 +109,6 @@ std::string LiveMediaSourceCheck(const core::AppConfig& config) {
     return out.str();
 }
 
-// Reads up to the last kMaxLines lines of the log file - used only by Copy
-// Diagnostic Info, which runs in normal (non-signal-handler) context, so
-// plain std::ifstream is fine here (unlike the crash handler, which must
-// never touch file I/O of arbitrary size).
 std::vector<std::string> ReadRecentLogLines(size_t maxLines = 50) {
     std::ifstream file(core::GetLogFilePath());
     std::deque<std::string> lines;
@@ -138,14 +131,8 @@ std::optional<std::string> ReadCrashReportIfPresent() {
     out << file.rdbuf();
     std::string content = out.str();
     if (content.empty()) {
-        // InstallCrashHandler() creates this file on every single launch
-        // (OPEN_ALWAYS, so a genuine crash from a *previous* session
-        // survives to be read here) - an empty file just means the file
-        // has always existed but nothing has ever actually crashed, not a
-        // crash with no content. Treating that as "no report" is what
-        // makes the trailing section disappear entirely on a machine
-        // that's never crashed, instead of showing up with a confusing
-        // blank body.
+        // The file exists on every launch (OPEN_ALWAYS) even with no
+        // crash - an empty file means no crash, not an empty report.
         return std::nullopt;
     }
     return content;
@@ -203,10 +190,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     core::Log::Init(core::GetLogFilePath());
     core::Log::Write(std::string("FeatherRPC starting... (") + core::kBuildString + ")");
 
-    // As early as possible after Log::Init - the crash file handle is
-    // opened once here (not lazily inside the filter) so the filter never
-    // has to do file-open work while the process may already be in a
-    // corrupted state. See CrashHandler.cpp for the full design rationale.
+    // As early as possible so the crash filter never has to open its own
+    // file handle later. See CrashHandler.cpp.
     platform_windows::InstallCrashHandler();
 
     // First thing, before touching config/engine/tray - refuses to start
