@@ -6,12 +6,6 @@ Shows what you're currently listening to on your Discord profile, the
 same "Listening to..." status Spotify shows, but for iTunes, Apple
 Music, VLC, your browser, and more.
 
-- Windows: iTunes, VLC, browsers, or anything else that reports
-  now-playing info to the system.
-- Linux: most media players (anything using MPRIS, the standard most
-  Linux apps support).
-- macOS: Music.app, or any other app via macOS's own Now Playing.
-
 > Built with the help of [Claude Code](https://claude.com/claude-code)
 > (Anthropic's AI coding agent).
 
@@ -22,8 +16,7 @@ each platform before relying on this.
 
 1. Create a Discord application at
    [discord.com/developers/applications](https://discord.com/developers/applications)
-   and copy its Application ID - this is what tells Discord which name
-   and icon to show for your status.
+   and copy its Application ID.
 2. Install FeatherRPC (see [Install](#install) below).
 3. Right-click the tray icon, paste the Application ID, and set any other
    preferences from the same menu (see [Tray menu](#tray-menu) below).
@@ -40,7 +33,7 @@ Run `FeatherRPC-<version>-windows-installer.exe`. Installs to
 `%LOCALAPPDATA%\FeatherRPC`.
 
 Windows will show a "Windows protected your PC" screen - click "More
-info", then "Run anyway". FeatherRPC isn't code-signed yet.
+info", then "Run anyway".
 
 Prefer a zip? Extract `FeatherRPC-<version>-windows-x64.zip` (`-arm64` on
 ARM64) and run `install.bat`.
@@ -63,8 +56,7 @@ autostart, adds `featherrpc` to `$PATH`.
 Open `FeatherRPC-<version>-macos-universal.dmg` and drag FeatherRPC to
 Applications.
 
-Unsigned, so macOS blocks the first launch - right-click the app, choose
-Open, confirm.
+macOS blocks the first launch - right-click the app, choose Open, confirm.
 
 ## Tray menu
 
@@ -98,7 +90,7 @@ Run the app itself with `--no-tray` for headless mode.
 - Native C++, no runtime. Idle memory use is a few megabytes.
 - Shows a "Listening to" status with a live progress bar.
 - Looks up cover art automatically. See [docs/AlbumArt.md](docs/AlbumArt.md).
-- Spotify is excluded - it has its own Discord integration.
+- Spotify is excluded.
 
 ## Known limitations
 
@@ -120,6 +112,4 @@ Full detail in [docs/KnownIssues.md](docs/KnownIssues.md). Headlines:
 GPL-3.0. See [LICENSE](LICENSE).
 
 [native/third_party/nlohmann/json.hpp](native/third_party/nlohmann/json.hpp)
-is a bundled third-party dependency and remains under its own MIT license
-(see the notice at the top of that file) - relicensing FeatherRPC's own
-code doesn't relicense code this project didn't write.
+is a bundled third-party dependency and stays under its own MIT license.

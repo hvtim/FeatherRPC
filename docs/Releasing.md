@@ -63,9 +63,7 @@ tar czf FeatherRPC-<version>-linux-x86_64.tar.gz install.sh uninstall.sh app/
 
 ## Symbol archiving
 
-Crash reports are unsymbolized (module + offset, not function names) -
-archive each platform's debug symbols per release so a crash can be
-symbolized later.
+Archive each platform's debug symbols per release.
 
 - **Windows**: zip `FeatherRPC.pdb`/`featherrpc-cli.pdb` per
   architecture - `FeatherRPC-<version>-windows-x64.pdb.zip` /
