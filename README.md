@@ -6,11 +6,6 @@ Shows what you're currently listening to on your Discord profile, the
 same "Listening to..." status Spotify shows, but for iTunes, Apple
 Music, VLC, your browser, and more.
 
-- Windows: iTunes, VLC, browsers, or anything else that reports
-  now-playing info to the system.
-- Linux: most media players.
-- macOS: Music.app, or any other app via macOS's own Now Playing.
-
 > Built with the help of [Claude Code](https://claude.com/claude-code)
 > (Anthropic's AI coding agent).
 
