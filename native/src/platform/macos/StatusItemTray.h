@@ -30,6 +30,23 @@ public:
     // ever shown.
     void SetInitialState(const core::AppConfig& config, bool startAtLogin);
 
+    // Opens the tray's own dropdown menu once, right after creation, if
+    // the app is still unconfigured - the macOS equivalent of the
+    // Windows/Linux first-run notifications (#31/#33), but deliberately
+    // not a system notification: NSUserNotificationCenter's first-ever
+    // call implicitly triggers a permission prompt on Big Sur+, and that
+    // first notification is typically dropped rather than shown even if
+    // the user allows it: there's no reliable way to guarantee the
+    // message actually appears on a genuinely fresh launch. The modern
+    // UNUserNotificationCenter's explicit requestAuthorization doesn't
+    // help either - Apple requires the app be code-signed for that
+    // permission dialog to appear at all, and this app isn't signed yet
+    // (see #29). Opening the menu directly is pure in-app UI, no
+    // permission involved either way: it confirms the app is running
+    // (the menu belongs to a live process) and puts "Set Discord
+    // Application ID..." right in front of the user immediately.
+    void ShowFirstRunMenu();
+
     // Safe to call from any thread - marshals onto the main thread via
     // dispatch_async(dispatch_get_main_queue(), ...), the Cocoa
     // equivalent of the Windows TrayIcon's PostMessage-based marshaling.

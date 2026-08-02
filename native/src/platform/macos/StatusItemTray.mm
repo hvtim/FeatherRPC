@@ -100,6 +100,22 @@ void StatusItemTray::SetInitialState(const core::AppConfig& config, bool startAt
     }
 }
 
+void StatusItemTray::ShowFirstRunMenu() {
+    // performClick: on the status item's own button is the standard way
+    // to open its dropdown programmatically - the same thing Cocoa does
+    // internally when the user actually clicks it, since statusItem.menu
+    // is already set (see RebuildMenu()). Deferred onto the main queue
+    // like PostStatusUpdate() below: this runs right after Create(),
+    // before RunMessageLoop()'s [NSApp run] has started pumping events,
+    // and menu tracking needs the run loop actually active.
+    __block Impl* impl = _impl.get();
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (impl->statusItem && impl->statusItem.button) {
+            [impl->statusItem.button performClick:nil];
+        }
+    });
+}
+
 void StatusItemTray::PostStatusUpdate(const std::string& text) {
     __block std::string copy = text;
     __block Impl* impl = _impl.get();

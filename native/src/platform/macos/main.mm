@@ -228,6 +228,19 @@ int main(int argc, const char** argv) {
         }
         tray.SetInitialState(config, autoLaunch.IsEnabled());
 
+        // Still on the placeholder default from a fresh install/config -
+        // nudge the tester that the app is actually running and point at
+        // the one required setup step. Compared against a
+        // default-constructed AppConfig rather than a hardcoded literal so
+        // this doesn't become a third copy of the placeholder string (see
+        // AppConfig.h and PresenceEngine.cpp's kPlaceholderClientId).
+        // Opens the tray's own menu rather than a system notification -
+        // see ShowFirstRunMenu()'s comment for why. Same trigger as the
+        // Windows (#31) and Linux (#33) companions.
+        if (config.clientId == core::AppConfig{}.clientId) {
+            tray.ShowFirstRunMenu();
+        }
+
         tray.OnConfigChanged = [&](const core::AppConfig& newConfig) {
             if (newConfig.trayEnabled != config.trayEnabled) {
                 core::Log::Write("Tray icon preference changed - takes effect next launch.");
