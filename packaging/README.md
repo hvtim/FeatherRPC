@@ -7,9 +7,8 @@
   Not yet verified against a real release.
 - **[appimage/](appimage/)** - `build-appimage.sh` produces a portable
   single-file AppImage. Built and bundle-verified; real-desktop run
-  confirmation pending (AppImages don't run reliably under WSL).
+  confirmation pending.
 
 All three build from the same install layout: `/usr/bin/{FeatherRPC,featherrpc}`,
 `/usr/share/applications/featherrpc.desktop`, `/usr/share/icons/hicolor/`,
-and (except AppImage, which has no systemd of its own) a `featherrpc.service`
-user unit.
+and a `featherrpc.service` user unit (except AppImage).

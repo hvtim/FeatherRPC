@@ -18,8 +18,7 @@ or from the tray menu.
 
 ## Automatic lookup
 
-Two sources are tried in order, so a miss on the first doesn't mean no
-art at all:
+Two sources are tried in order:
 
 1. **Apple's iTunes Search API** - tried first, by album then by track.
    No API key, generally the fastest and most complete for mainstream
@@ -33,12 +32,9 @@ If both miss, FeatherRPC falls back to the fallback image.
 
 ## The fallback image
 
-Automatic lookup can miss - an obscure track, a browser tab title with no
-real metadata, or the source not reporting an album at all. `Off` mode
-skips lookup entirely. Either way, FeatherRPC needs something to show, and
-that something isn't a plain image file bundled with the app - it's a
-**Rich Presence Art Asset**, a named image uploaded to your own Discord
-application.
+Shown when automatic lookup misses, or in `Off` mode. It isn't a plain
+image file bundled with the app - it's a **Rich Presence Art Asset**, a
+named image uploaded to your own Discord application.
 
 To set one up:
 
@@ -58,15 +54,11 @@ featherrpc icon set <your-asset-name>
 (`featherrpc-cli` on Windows/macOS - see [CLI.md](CLI.md).) Check the
 current value with `icon get`.
 
-Whatever name is set here must match an asset already uploaded under that
-exact name in the Developer Portal - it's not an arbitrary image or URL,
-and there's no fallback-for-the-fallback if the name doesn't match
-anything uploaded (Discord just shows no image).
+The name must match an asset already uploaded under that exact name in
+the Developer Portal, or Discord shows no image.
 
 ## Custom art URL
 
 In `Custom` mode, FeatherRPC uses a single image URL you provide directly
-- no Developer Portal upload needed, since this one goes straight into
-the Rich Presence payload as an external URL rather than an asset key.
-Set it with `arturl set <url>` or the tray menu's "Custom image URL..."
-prompt.
+- no Developer Portal upload needed. Set it with `arturl set <url>` or
+the tray menu's "Custom image URL..." prompt.

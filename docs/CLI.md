@@ -9,9 +9,7 @@ for the next launch.
 
 - Windows: `featherrpc-cli.exe`
 - macOS: `featherrpc-cli`
-- Linux: `featherrpc` (Linux filesystems are case-sensitive, so this
-  doesn't collide with the `FeatherRPC` tray binary the way it would on
-  Windows/macOS)
+- Linux: `featherrpc`
 
 Run it with no arguments to print the full command list.
 
@@ -77,12 +75,10 @@ currently selected one, or set it.
 - Linux: `id` is an MPRIS bus name (e.g.
   `org.mpris.MediaPlayer2.plasma-browser-integration`).
 - macOS: `list` always prints exactly two fixed entries - `Music`
-  (Music.app via Scripting Bridge) and `MediaRemote` (any other app, via
-  an unofficial workaround for Apple's macOS 15.4+ MediaRemote entitlement
-  lockdown - see [KnownIssues.md](KnownIssues.md)). Unlike Windows/Linux,
-  there's no live enumeration of individual apps; `MediaRemote` always
-  tracks whatever macOS itself currently considers the active Now Playing
-  session, Spotify excluded.
+  (Music.app) and `MediaRemote` (any other app; see
+  [KnownIssues.md](KnownIssues.md)). No live enumeration of individual
+  apps; `MediaRemote` tracks whatever macOS considers the active Now
+  Playing session, Spotify excluded.
 
 ### `tray get` / `tray on` / `tray off`
 
@@ -121,11 +117,8 @@ Print the full path to `config.json`.
 
 ### `log path`
 
-Print the full path to `featherrpc.log` - useful for a bug report, or for
-piping straight into `tail -f`/`Get-Content -Wait` while reproducing an
-issue. The tray's "Copy Diagnostic Info" action already includes a tail of
-this file, so this command is mainly for finding the file directly rather
-than reading its content through the CLI.
+Print the full path to `featherrpc.log` - useful for a bug report, or
+for piping into `tail -f`/`Get-Content -Wait` while reproducing an issue.
 
 ## Live vs queued changes
 
