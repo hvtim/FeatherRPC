@@ -136,12 +136,21 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
-          MIN_EXE_BYTES=1000000
 
           INSTALLER="FeatherRPC-$VERSION-windows-installer.exe"
           [ -f "$INSTALLER" ] || { echo "::error::Missing $INSTALLER"; exit 1; }
-          SIZE=$(stat -c%s "$INSTALLER")
-          [ "$SIZE" -ge "$MIN_EXE_BYTES" ] || { echo "::error::$INSTALLER is suspiciously small ($SIZE bytes)"; exit 1; }
+          # 7z can read NSIS's own installer container format directly
+          # (confirmed locally: `7z l` on a real installer lists every
+          # embedded file) - a real content check, not a size guess. Each
+          # binary must appear twice: once per bundled architecture. A
+          # missing architecture (e.g. one build silently failing while
+          # the other succeeds) would otherwise still produce a real,
+          # plausible-sized installer - only a content check catches that.
+          LISTING=$(7z l "$INSTALLER")
+          for MEMBER in FeatherRPC.exe featherrpc-cli.exe; do
+            COUNT=$(echo "$LISTING" | grep -c "$MEMBER\$" || true)
+            [ "$COUNT" -eq 2 ] || { echo "::error::$INSTALLER should contain $MEMBER twice (once per architecture), found $COUNT"; exit 1; }
+          done
 
           for ARCH in x64 arm64; do
             ZIP="FeatherRPC-$VERSION-windows-$ARCH.zip"
