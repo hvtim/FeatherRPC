@@ -33,82 +33,50 @@ locally, not through the browser.
 
 ## Install
 
+Downloads: [latest release](../../releases/latest).
+
 ### Windows
 
-#### Installer (recommended)
+Run `FeatherRPC-<version>-windows-installer.exe`. Installs to
+`%LOCALAPPDATA%\FeatherRPC`.
 
-Download `FeatherRPC-<version>-windows-installer.exe` from the
-[latest release](../../releases/latest) and run it - it detects your CPU
-architecture automatically. Installs to `%LOCALAPPDATA%\FeatherRPC`.
+Windows will show a "Windows protected your PC" screen - click "More
+info", then "Run anyway". FeatherRPC isn't code-signed yet.
 
-Windows will likely show a blue "Windows protected your PC" screen: this
-is expected, not a sign anything's wrong - FeatherRPC just isn't
-code-signed yet. Click "More info" then "Run anyway" to continue.
-
-#### Zip
-
-Portable, no install wizard - for scripted setups or people who'd rather
-not run an installer. Download and extract
-`FeatherRPC-<version>-windows-x64.zip` (`-arm64` on ARM64 Windows) from
-the [latest release](../../releases/latest), then:
-
-```
-install.bat
-```
+Prefer a zip? Extract `FeatherRPC-<version>-windows-x64.zip` (`-arm64` on
+ARM64) and run `install.bat`.
 
 ### Linux
 
-#### AppImage
-
-No install step, no dependencies beyond what most desktops already have
-(`glib2`, `dbus`, `curl`). Download from the
-[latest release](../../releases/latest), then:
+AppImage:
 
 ```bash
 chmod +x FeatherRPC-*.AppImage
 ./FeatherRPC-*.AppImage
 ```
 
-#### Install script
-
-Installs to `~/.local/share/FeatherRPC`, sets up autostart, and puts the
-`featherrpc` CLI on `$PATH`. Download and extract
-`FeatherRPC-<version>-linux-x86_64.tar.gz` from the
-[latest release](../../releases/latest), then:
-
-```bash
-./install.sh
-```
+Or extract `FeatherRPC-<version>-linux-x86_64.tar.gz` and run
+`./install.sh` - installs to `~/.local/share/FeatherRPC`, sets up
+autostart, adds `featherrpc` to `$PATH`.
 
 ### macOS
 
-Download `FeatherRPC-<version>-macos-universal.dmg` from the
-[latest release](../../releases/latest), open it, and drag `FeatherRPC.app`
-to the `Applications` shortcut shown alongside it.
+Open `FeatherRPC-<version>-macos-universal.dmg` and drag FeatherRPC to
+Applications.
 
-The app is unsigned and unnotarized - no Apple Developer account exists
-for this project yet (see [docs/KnownIssues.md](docs/KnownIssues.md)).
-Gatekeeper will refuse to open it on first launch ("cannot be opened
-because the developer cannot be verified"): right-click the app in
-Finder, choose **Open**, then confirm in the dialog that appears - this
-only needs doing once.
+Unsigned, so macOS blocks the first launch - right-click the app, choose
+Open, confirm.
 
 ## Tray menu
 
 Right-click the tray icon:
 
 - Media source
-- Broadcast now playing to Discord (on/off)
-- **Settings** (submenu)
-  - Set Discord Application ID
-  - Show track number on/off
-  - Album art settings (see [docs/AlbumArt.md](docs/AlbumArt.md))
-  - Poll interval
-  - Start automatically when you log in
-  - Show tray icon (applies on next launch)
-  - Verbose Logging (see [CONTRIBUTING.md](CONTRIBUTING.md))
-  - Open App Directory
-- Copy Diagnostic Info - for bug reports, see [CONTRIBUTING.md](CONTRIBUTING.md)
+- Broadcast on/off
+- Settings - Discord Application ID, track number, album art (see
+  [docs/AlbumArt.md](docs/AlbumArt.md)), poll interval, start at login,
+  tray icon, verbose logging
+- Copy Diagnostic Info (see [CONTRIBUTING.md](CONTRIBUTING.md))
 
 ## CLI control
 
