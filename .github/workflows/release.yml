@@ -59,7 +59,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          awk '/^## \[Unreleased\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md > release-notes.md
+          # Positional, not pattern-matched on the text "Unreleased" -
+          # CHANGELOG.md has a second, historical "## [Unreleased]"
+          # heading further down (a pre-rebrand section kept for the
+          # record), which a text-matching version of this extraction
+          # would re-trigger on, pulling old 3.0.0-alpha.1-era content
+          # into every release's notes. The real Unreleased section is
+          # always the first one in the file, so just take everything
+          # between the first "## [" heading and the second, regardless
+          # of what either heading's text says.
+          awk '/^## \[/{count++} count==1 && !/^## \[/{print} count==2{exit}' CHANGELOG.md > release-notes.md
           if [ ! -s release-notes.md ]; then
             echo "(No CHANGELOG.md [Unreleased] entries found for this release.)" > release-notes.md
           fi
