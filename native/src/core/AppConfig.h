@@ -35,6 +35,11 @@ struct AppConfig {
     // make its own tray icon disappear mid-session) - takes effect next
     // launch, unlike every other field here.
     bool trayEnabled = true;
+
+    // Tray Settings submenu toggle - gates extra per-poll detail in
+    // PresenceEngine and the media-source implementations via
+    // core::Log::IsVerbose(). Log-file-only; no separate debug window.
+    bool verboseLogging = false;
 };
 
 // Missing/unreadable/corrupt file returns default-constructed AppConfig

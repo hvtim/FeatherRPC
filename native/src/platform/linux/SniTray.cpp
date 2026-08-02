@@ -1,12 +1,17 @@
 #include "SniTray.h"
 #include "AppIcon.h"
+#include "Clipboard.h"
+#include "core/ConfigPaths.h"
 #include "core/Log.h"
 
 #include <gio/gio.h>
 #include <glib-unix.h>
+#include <unistd.h>
 
+#include <cstdlib>
 #include <csignal>
 #include <string>
+#include <string_view>
 
 namespace nativeui {
 
@@ -134,6 +139,68 @@ struct StatusUpdatePayload {
     std::string text;
 };
 
+// Same CommandExists idiom as Clipboard.cpp uses (and, before this,
+// TextPrompt.cpp's own std::system-based version for zenity/kdialog) -
+// duplicated rather than shared, matching this codebase's existing
+// tolerance for one small helper repeated across a couple of translation
+// units (see main_linux.cpp's own comment on kPlaceholderClientId for the
+// same call). Searches $PATH directly via access() instead of forking a
+// shell to run `command -v` - a whole shell spawn is real, avoidable
+// overhead for what's just a PATH lookup.
+bool CommandExists(const char* cmd) {
+    const char* pathEnv = std::getenv("PATH");
+    if (!pathEnv) {
+        return false;
+    }
+    std::string_view path(pathEnv);
+    size_t start = 0;
+    while (start <= path.size()) {
+        size_t colon = path.find(':', start);
+        std::string_view dir = path.substr(start, colon == std::string_view::npos ? std::string_view::npos : colon - start);
+        if (!dir.empty()) {
+            std::string candidate(dir);
+            candidate += '/';
+            candidate += cmd;
+            if (access(candidate.c_str(), X_OK) == 0) {
+                return true;
+            }
+        }
+        if (colon == std::string_view::npos) {
+            break;
+        }
+        start = colon + 1;
+    }
+    return false;
+}
+
+// Same single-quote-and-escape trick TextPrompt.cpp's ShellQuote uses.
+std::string ShellQuote(const std::string& s) {
+    std::string result = "'";
+    for (char c : s) {
+        if (c == '\'') {
+            result += "'\\''";
+        } else {
+            result += c;
+        }
+    }
+    result += "'";
+    return result;
+}
+
+void OpenAppDirectory() {
+    if (!CommandExists("xdg-open")) {
+        core::Log::Write("[warn] Open App Directory: xdg-open isn't installed - config directory is " +
+                          core::GetConfigDirectory().string());
+        return;
+    }
+    // Backgrounded (trailing &) and output discarded, same as any
+    // fire-and-forget desktop launch - this process doesn't want to block
+    // on, or inherit any output from, whatever file manager xdg-open hands
+    // off to.
+    std::string command = "xdg-open " + ShellQuote(core::GetConfigDirectory().string()) + " >/dev/null 2>&1 &";
+    std::system(command.c_str());
+}
+
 } // namespace
 
 SniTray::SniTray() = default;
@@ -211,9 +278,28 @@ bool SniTray::Create() {
         return false;
     }
 
+    // Deferred to the first main-loop iteration via g_idle_add, NOT called
+    // synchronously here - confirmed by live reproduction on real hardware
+    // (a Fedora 44/GNOME desktop, not just WSL) that calling
+    // RefreshMediaSourcesAndRebuild() synchronously at this point crashes
+    // essentially every launch: it makes a *blocking* libdbus call
+    // (MprisMediaSource.cpp uses libdbus directly, not GDBus) while
+    // GDBusConnection's own internal worker thread (spun up by
+    // g_bus_get_sync() above) is still concurrently finishing its own
+    // setup - libdbus's blocking call pumps its own message loop while
+    // waiting, and that appears to race with GDBus's worker thread deep
+    // inside GLib's allocator (confirmed via ThreadSanitizer: a genuine
+    // g_malloc/g_free data race between the main thread and GDBus's
+    // "gdbus" worker thread). Deferring past Create() - to the first idle
+    // callback once the main loop is actually pumping, which still
+    // satisfies the "build once up front" goal below since it fires
+    // before any host has time to round-trip a real GetLayout call -
+    // sidesteps the race entirely without needing to fix libdbus/GDBus's
+    // own internals. See docs/KnownIssues.md for the fuller writeup.
+    //
     // Build once up front so a host that calls GetLayout before ever
     // sending AboutToShow (some do, to pre-render) still sees a real menu.
-    RefreshMediaSourcesAndRebuild();
+    g_idle_add(InitialMediaRefreshThunk, this);
 
     RegisterWithWatcher();
 
@@ -344,6 +430,11 @@ gboolean SniTray::OnSigQuitThunk(gpointer data) {
     if (tray->loop_) {
         g_main_loop_quit(tray->loop_);
     }
+    return G_SOURCE_REMOVE;
+}
+
+gboolean SniTray::InitialMediaRefreshThunk(gpointer data) {
+    static_cast<SniTray*>(data)->RefreshMediaSourcesAndRebuild();
     return G_SOURCE_REMOVE;
 }
 
@@ -479,6 +570,28 @@ void SniTray::HandleCommand(int itemId) {
         NotifyConfigChanged();
         return;
     }
+
+    if (name == "verbose-logging") {
+        config_.verboseLogging = !config_.verboseLogging;
+        NotifyConfigChanged();
+        return;
+    }
+
+    if (name == "open-app-dir") {
+        OpenAppDirectory();
+        return;
+    }
+
+    if (name == "copy-diagnostic-info") {
+        // Fully async (see Clipboard.h/.cpp) - fallback-chain progression
+        // and any eventual failure logging happen internally, on their
+        // own schedule, so there's nothing left to do here beyond
+        // handing off the report text.
+        if (OnBuildDiagnosticReport) {
+            platform_linux::CopyToClipboard(OnBuildDiagnosticReport());
+        }
+        return;
+    }
 }
 
 void SniTray::NotifyConfigChanged() {
@@ -536,10 +649,6 @@ void SniTray::RebuildMenuTree() {
         return ref;
     };
 
-    MenuNode& setAppIdItem = addChild(rootMenu_);
-    setAppIdItem.label = "Set Discord Application ID...";
-    setAppIdItem.command = "set-app-id";
-
     // Media Source submenu - unlike Windows (which always has "iTunes" as
     // a fixed first entry), Linux has no built-in source: the list is
     // purely whatever MPRIS players OnRefreshMediaSources found on this
@@ -564,13 +673,26 @@ void SniTray::RebuildMenuTree() {
     broadcastItem.toggleType = "checkmark";
     broadcastItem.toggleState = config_.broadcastEnabled ? 1 : 0;
 
-    MenuNode& trackNumberItem = addChild(rootMenu_);
+    addChild(rootMenu_).isSeparator = true;
+
+    // Settings submenu - everything persistent or infrequently touched
+    // lives here instead of cluttering the root menu, mirroring the
+    // Windows/macOS tray's own Settings reorg.
+    MenuNode& settingsMenu = addChild(rootMenu_);
+    settingsMenu.label = "Settings";
+    settingsMenu.isSubmenu = true;
+
+    MenuNode& setAppIdItem = addChild(settingsMenu);
+    setAppIdItem.label = "Set Discord Application ID...";
+    setAppIdItem.command = "set-app-id";
+
+    MenuNode& trackNumberItem = addChild(settingsMenu);
     trackNumberItem.label = "Show track number";
     trackNumberItem.command = "track-number";
     trackNumberItem.toggleType = "checkmark";
     trackNumberItem.toggleState = config_.showTrackNumber ? 1 : 0;
 
-    MenuNode& artMenu = addChild(rootMenu_);
+    MenuNode& artMenu = addChild(settingsMenu);
     artMenu.label = "Album Art";
     artMenu.isSubmenu = true;
     auto addArtItem = [&](const char* label, const char* mode) {
@@ -589,7 +711,7 @@ void SniTray::RebuildMenuTree() {
     setFallbackKeyItem.label = "Set Fallback Image Key...";
     setFallbackKeyItem.command = "set-fallback-key";
 
-    MenuNode& pollMenu = addChild(rootMenu_);
+    MenuNode& pollMenu = addChild(settingsMenu);
     pollMenu.label = "Poll Interval";
     pollMenu.isSubmenu = true;
     for (int ms : pollIntervalPresetsMs_) {
@@ -601,19 +723,35 @@ void SniTray::RebuildMenuTree() {
         item.toggleState = (config_.pollIntervalMs == ms) ? 1 : 0;
     }
 
-    addChild(rootMenu_).isSeparator = true;
-
-    MenuNode& startAtLoginItem = addChild(rootMenu_);
+    MenuNode& startAtLoginItem = addChild(settingsMenu);
     startAtLoginItem.label = "Start automatically when you log in";
     startAtLoginItem.command = "start-at-login";
     startAtLoginItem.toggleType = "checkmark";
     startAtLoginItem.toggleState = startAtLogin_ ? 1 : 0;
 
-    MenuNode& trayEnabledItem = addChild(rootMenu_);
+    MenuNode& trayEnabledItem = addChild(settingsMenu);
     trayEnabledItem.label = "Show tray icon (applies next launch)";
     trayEnabledItem.command = "tray-enabled";
     trayEnabledItem.toggleType = "checkmark";
     trayEnabledItem.toggleState = config_.trayEnabled ? 1 : 0;
+
+    addChild(settingsMenu).isSeparator = true;
+
+    MenuNode& verboseLoggingItem = addChild(settingsMenu);
+    verboseLoggingItem.label = "Verbose Logging";
+    verboseLoggingItem.command = "verbose-logging";
+    verboseLoggingItem.toggleType = "checkmark";
+    verboseLoggingItem.toggleState = config_.verboseLogging ? 1 : 0;
+
+    MenuNode& openAppDirItem = addChild(settingsMenu);
+    openAppDirItem.label = "Open App Directory";
+    openAppDirItem.command = "open-app-dir";
+
+    addChild(rootMenu_).isSeparator = true;
+
+    MenuNode& copyDiagnosticInfoItem = addChild(rootMenu_);
+    copyDiagnosticInfoItem.label = "Copy Diagnostic Info";
+    copyDiagnosticInfoItem.command = "copy-diagnostic-info";
 
     addChild(rootMenu_).isSeparator = true;
 

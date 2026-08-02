@@ -1,8 +1,12 @@
 #include "ToastPermission.h"
 #include "ComInit.h"
+#include "StringConvert.h"
+#include "core/Log.h"
 
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.UI.Notifications.h>
+
+#include <string_view>
 
 namespace platform_windows {
 
@@ -20,11 +24,18 @@ bool AreNotificationsEnabled() {
         // AppUserModelId set on the Start Menu shortcut in installer.nsi.
         auto notifier = ToastNotificationManager::CreateToastNotifier(L"FeatherRPC.TrayApp");
         return notifier.Setting() == NotificationSetting::Enabled;
-    } catch (...) {
+    } catch (const winrt::hresult_error& e) {
         // Couldn't determine (e.g. no AppUserModelID registered, or a
         // Windows build old enough not to support this) - default to
         // enabled rather than suppress a real notification based on an
-        // inconclusive check.
+        // inconclusive check. This only runs once (first-run balloon), so
+        // unconditional logging is safe.
+        core::Log::Write("[warn] Notification-permission check failed (" +
+                          NarrowFromWide(std::wstring_view(e.message().c_str(), e.message().size())) +
+                          ") - assuming notifications are enabled.");
+        return true;
+    } catch (...) {
+        core::Log::Write("[warn] Notification-permission check failed (unknown error) - assuming notifications are enabled.");
         return true;
     }
 }

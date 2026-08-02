@@ -1,10 +1,13 @@
 #include "core/AppConfig.h"
 #include "core/ConfigPaths.h"
+#include "core/DiagnosticReport.h"
 #include "core/Log.h"
 #include "core/PresenceEngine.h"
+#include "core/Version.h"
 
 #include "cli/StatusFile.h"
 
+#include "platform/windows/CrashHandler.h"
 #include "platform/windows/DaemonSignal.h"
 #include "platform/windows/ITunesMediaSource.h"
 #include "platform/windows/PipeIpcTransport.h"
@@ -20,8 +23,13 @@
 #include <shobjidl.h>
 
 #include <cstdio>
+#include <deque>
+#include <fstream>
 #include <memory>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -30,6 +38,117 @@ std::unique_ptr<core::MediaSource> MakeMediaSource(const std::string& id) {
         return std::make_unique<platform_windows::ITunesMediaSource>();
     }
     return std::make_unique<platform_windows::SmtcMediaSource>(id);
+}
+
+// RtlGetVersion, not GetVersionExW - the latter lies about the true OS
+// version unless the exe manifest declares compatibility GUIDs for each
+// Windows release, which this app's manifest doesn't. Windows 11 still
+// reports dwMajorVersion 10 internally - distinguished here the same way
+// most diagnostic tools do, by build number (22000+).
+std::string OsDescription() {
+    std::string osName = "Windows (version unknown)";
+    DWORD buildNumber = 0;
+
+    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (ntdll) {
+        using RtlGetVersionFn = LONG(WINAPI*)(OSVERSIONINFOEXW*);
+        auto rtlGetVersion = reinterpret_cast<RtlGetVersionFn>(GetProcAddress(ntdll, "RtlGetVersion"));
+        if (rtlGetVersion) {
+            OSVERSIONINFOEXW info{};
+            info.dwOSVersionInfoSize = sizeof(info);
+            if (rtlGetVersion(&info) == 0) {
+                buildNumber = info.dwBuildNumber;
+                if (info.dwMajorVersion == 10 && buildNumber >= 22000) {
+                    osName = "Windows 11";
+                } else if (info.dwMajorVersion == 10) {
+                    osName = "Windows 10";
+                } else {
+                    osName = "Windows " + std::to_string(info.dwMajorVersion);
+                }
+            }
+        }
+    }
+
+    SYSTEM_INFO sysInfo{};
+    GetNativeSystemInfo(&sysInfo);
+    const char* arch = "unknown arch";
+    switch (sysInfo.wProcessorArchitecture) {
+        case PROCESSOR_ARCHITECTURE_AMD64: arch = "x64"; break;
+        case PROCESSOR_ARCHITECTURE_ARM64: arch = "ARM64"; break;
+        case PROCESSOR_ARCHITECTURE_INTEL: arch = "x86"; break;
+    }
+
+    return osName + " (build " + std::to_string(buildNumber) + "), " + arch;
+}
+
+// Called only from Copy Diagnostic Info, never from the poll loop - a
+// fresh, on-demand check at report-generation time, not something logged
+// on every poll. This is the actual fix for "picked the wrong media
+// source, thinks it's a bug": states plainly whether the currently
+// configured source has anything active right now, and what else is
+// actually available if not.
+std::string LiveMediaSourceCheck(const core::AppConfig& config) {
+    std::ostringstream out;
+    out << "Currently selected media source: " << config.mediaSource << ". ";
+
+    auto source = MakeMediaSource(config.mediaSource);
+    auto track = source->GetCurrentTrack();
+    bool foundActive = track.has_value() && !track->name.empty() && track->state != core::PlaybackState::Stopped;
+    out << "Live check: " << (foundActive ? "found an active track right now." : "no active track found right now for this source.");
+
+    auto available = platform_windows::SmtcMediaSource::GetAvailableSources();
+    out << " Available SMTC sources right now: ";
+    if (available.empty()) {
+        out << "none.";
+    } else {
+        for (size_t i = 0; i < available.size(); ++i) {
+            if (i > 0) {
+                out << ", ";
+            }
+            out << available[i].displayName;
+        }
+        out << ".";
+    }
+    return out.str();
+}
+
+// Reads up to the last kMaxLines lines of the log file - used only by Copy
+// Diagnostic Info, which runs in normal (non-signal-handler) context, so
+// plain std::ifstream is fine here (unlike the crash handler, which must
+// never touch file I/O of arbitrary size).
+std::vector<std::string> ReadRecentLogLines(size_t maxLines = 50) {
+    std::ifstream file(core::GetLogFilePath());
+    std::deque<std::string> lines;
+    std::string line;
+    while (std::getline(file, line)) {
+        lines.push_back(std::move(line));
+        if (lines.size() > maxLines) {
+            lines.pop_front();
+        }
+    }
+    return std::vector<std::string>(lines.begin(), lines.end());
+}
+
+std::optional<std::string> ReadCrashReportIfPresent() {
+    std::ifstream file(core::GetCrashFilePath(), std::ios::binary);
+    if (!file) {
+        return std::nullopt;
+    }
+    std::ostringstream out;
+    out << file.rdbuf();
+    std::string content = out.str();
+    if (content.empty()) {
+        // InstallCrashHandler() creates this file on every single launch
+        // (OPEN_ALWAYS, so a genuine crash from a *previous* session
+        // survives to be read here) - an empty file just means the file
+        // has always existed but nothing has ever actually crashed, not a
+        // crash with no content. Treating that as "no report" is what
+        // makes the trailing section disappear entirely on a machine
+        // that's never crashed, instead of showing up with a confusing
+        // blank body.
+        return std::nullopt;
+    }
+    return content;
 }
 
 // Useful for live debugging while running from an existing terminal.
@@ -82,7 +201,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     AttachDebugConsole();
 
     core::Log::Init(core::GetLogFilePath());
-    core::Log::Write("FeatherRPC starting...");
+    core::Log::Write(std::string("FeatherRPC starting... (") + core::kBuildString + ")");
+
+    // As early as possible after Log::Init - the crash file handle is
+    // opened once here (not lazily inside the filter) so the filter never
+    // has to do file-open work while the process may already be in a
+    // corrupted state. See CrashHandler.cpp for the full design rationale.
+    platform_windows::InstallCrashHandler();
 
     // First thing, before touching config/engine/tray - refuses to start
     // a second instance (tray or headless) alongside one that's already
@@ -99,6 +224,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
 
     core::AppConfig config = core::LoadConfig(core::GetConfigFilePath());
     std::string currentMediaSourceId = config.mediaSource;
+    core::Log::SetVerbose(config.verboseLogging);
 
     platform_windows::ShellLinkAutoLaunch autoLaunch;
 
@@ -113,6 +239,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     // hand off to the engine" sequence is identical either way.
     auto applyConfig = [&](const core::AppConfig& newConfig) {
         core::SaveConfig(newConfig, core::GetConfigFilePath());
+        core::Log::SetVerbose(newConfig.verboseLogging);
 
         std::unique_ptr<core::MediaSource> newMediaSource;
         if (newConfig.mediaSource != currentMediaSourceId) {
@@ -186,6 +313,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int) {
     };
 
     tray.OnRefreshMediaSources = [] { return platform_windows::SmtcMediaSource::GetAvailableSources(); };
+
+    tray.OnBuildDiagnosticReport = [&] {
+        core::DiagnosticReportInputs inputs;
+        inputs.config = config;
+        inputs.osDescription = OsDescription();
+        inputs.mediaSourceLiveCheckText = LiveMediaSourceCheck(config);
+        inputs.recentLogLines = ReadRecentLogLines();
+        inputs.lastCrashReportText = ReadCrashReportIfPresent();
+        return platform_windows::WideFromNarrow(core::BuildDiagnosticReport(inputs));
+    };
 
     engine.OnStatusChanged = [&] {
         tray.PostStatusUpdate(L"FeatherRPC - " + platform_windows::WideFromNarrow(engine.Status()));

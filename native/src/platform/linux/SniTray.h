@@ -84,6 +84,13 @@ public:
     std::function<void(std::string&)> OnEditFallbackImageKey;
     std::function<std::vector<core::MediaSourceInfo>()> OnRefreshMediaSources;
 
+    // Assembles the tray's "Copy Diagnostic Info" text - wired from
+    // main_linux.cpp the same way OnRefreshMediaSources is. Called on the
+    // main thread from HandleCommand(), synchronously (it does a live
+    // MPRIS query and a tail read of the log file, both fast enough not to
+    // matter on the GLib main loop).
+    std::function<std::string()> OnBuildDiagnosticReport;
+
     // Invoked on the main thread (via g_unix_signal_add, from inside
     // RunMessageLoop) when SIGHUP arrives - the tray-mode equivalent of
     // main_linux.cpp's headless reload loop, so `featherrpc appid set`
@@ -152,6 +159,7 @@ private:
     static gboolean ApplyStatusUpdateThunk(gpointer data);
     static gboolean OnSigHupThunk(gpointer data);
     static gboolean OnSigQuitThunk(gpointer data);
+    static gboolean InitialMediaRefreshThunk(gpointer data);
 
     void HandleSniMethodCall(
         const std::string& methodName, GVariant* parameters, GDBusMethodInvocation* invocation);

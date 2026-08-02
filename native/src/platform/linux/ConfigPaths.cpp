@@ -38,4 +38,8 @@ std::filesystem::path GetStatusFilePath() {
     return GetConfigDirectory() / "featherrpcd.status.json";
 }
 
+std::filesystem::path GetCrashFilePath() {
+    return GetConfigDirectory() / "featherrpc-crash.log";
+}
+
 } // namespace core

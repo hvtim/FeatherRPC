@@ -1,0 +1,70 @@
+name: Crash Report
+description: FeatherRPC actually stopped running.
+title: "[Crash] "
+labels: ["bug", "crash"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: check [KnownIssues.md](https://github.com/hvtim/FeatherRPC/blob/main/docs/KnownIssues.md)
+        and search existing issues - your report may already be covered.
+
+        Then, reopen FeatherRPC and, in the tray's right-click menu, click
+        **Copy Diagnostic Info**, then paste the result below. As long as
+        the app's own crash handler caught it, this automatically includes
+        a report of the crash itself (build version, faulting
+        thread/signal, a backtrace, and the last few log lines before it
+        happened) - you don't need to go find that file yourself. See
+        [CONTRIBUTING.md#reporting-bugs](https://github.com/hvtim/FeatherRPC/blob/main/CONTRIBUTING.md#reporting-bugs)
+        for the full details.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I'm running the latest release.
+          required: true
+        - label: I checked KnownIssues.md - this doesn't look like an already-documented limitation or fixed bug.
+          required: true
+        - label: I searched existing issues - this doesn't look like a duplicate.
+          required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows
+        - Linux
+        - macOS
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostic-info
+    attributes:
+      label: Diagnostic Info
+      description: Paste the full output of the tray menu's "Copy Diagnostic Info" here, taken after reopening the app.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: os-crash-log
+    attributes:
+      label: OS-native crash log (if FeatherRPC's own report is missing)
+      description: |
+        If the "Diagnostic Info" above has no "Last crash report" section, our own handler
+        didn't catch this one - check the OS's own crash capture instead and paste what you
+        find (see CONTRIBUTING.md for exact locations per platform: Windows Event Viewer,
+        Linux coredumpctl/journalctl, or macOS ~/Library/Logs/DiagnosticReports/).
+      render: text
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: What were you doing right before it crashed?
+      description: Even an approximate description helps - exact repro steps if you have them.
+    validations:
+      required: true

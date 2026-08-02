@@ -1,6 +1,7 @@
 #include "SmtcMediaSource.h"
 #include "ComInit.h"
 #include "StringConvert.h"
+#include "core/Log.h"
 
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Foundation.h>
@@ -304,6 +305,13 @@ std::string DisplayNameForAppId(const std::string& appId) {
 // to UTF-8, so this can never split a multi-byte UTF-8 sequence.
 constexpr size_t kMaxTitleLengthForMenu = 40;
 
+// Gates GetAvailableSources()'s failure logging to state transitions only -
+// see the member-scoped equivalent on SmtcMediaSource::GetCurrentTrack for
+// why. This one is a plain file-scope static rather than a member since
+// GetAvailableSources() is itself static (called before any instance
+// necessarily exists, to populate the tray's Media Source submenu).
+bool s_lastGetAvailableSourcesFailed = false;
+
 std::string TrackTitleForMenu(GlobalSystemMediaTransportControlsSession const& session) {
     try {
         auto props = session.TryGetMediaPropertiesAsync().get();
@@ -341,9 +349,29 @@ std::vector<core::MediaSourceInfo> SmtcMediaSource::GetAvailableSources() {
             }
             result.push_back({id, label});
         }
-    } catch (...) {
+        if (s_lastGetAvailableSourcesFailed) {
+            core::Log::Write("SMTC: session enumeration recovered - succeeded again.");
+            s_lastGetAvailableSourcesFailed = false;
+        }
+    } catch (const winrt::hresult_error& e) {
         // SMTC unavailable (very old Windows build, or the API threw) -
         // callers just see an empty list and fall back to iTunes-only.
+        // Logged only on the failed->failed edge (not every menu-open) so
+        // a genuinely broken SMTC doesn't spam the log, while still
+        // recording the actual reason for a bug report.
+        if (!s_lastGetAvailableSourcesFailed) {
+            core::Log::Write("[warn] SMTC: session enumeration failed (" +
+                              NarrowFromHstring(e.message()) + ") - will keep retrying silently.");
+            s_lastGetAvailableSourcesFailed = true;
+        }
+    } catch (...) {
+        // Non-WinRT exception (shouldn't normally happen here, but this
+        // path must never let anything escape) - same transition gating,
+        // just without a message to report.
+        if (!s_lastGetAvailableSourcesFailed) {
+            core::Log::Write("[warn] SMTC: session enumeration failed (unknown error) - will keep retrying silently.");
+            s_lastGetAvailableSourcesFailed = true;
+        }
     }
     return result;
 }
@@ -418,8 +446,30 @@ std::optional<core::TrackInfo> SmtcMediaSource::GetCurrentTrack() {
         info.durationSeconds = duration;
         info.elapsedSeconds = elapsed;
         info.state = state;
+        if (_lastGetCurrentTrackFailed) {
+            core::Log::Write("SMTC: reading the current track for " + _appUserModelId + " recovered - succeeded again.");
+            _lastGetCurrentTrackFailed = false;
+        }
         return info;
+    } catch (const winrt::hresult_error& e) {
+        // Transition-only: this runs once per poll interval, so logging
+        // every miss would flood the log. Records the actual HRESULT
+        // message so a bug report shows *why*, not just "nothing played."
+        if (!_lastGetCurrentTrackFailed) {
+            core::Log::Write("[warn] SMTC: reading the current track for " + _appUserModelId + " failed (" +
+                              NarrowFromHstring(e.message()) + ") - will keep retrying silently.");
+            _lastGetCurrentTrackFailed = true;
+        }
+        return std::nullopt;
     } catch (...) {
+        // Non-WinRT exception (shouldn't normally happen here, but this
+        // path must never let anything escape) - same transition gating,
+        // just without a message to report.
+        if (!_lastGetCurrentTrackFailed) {
+            core::Log::Write("[warn] SMTC: reading the current track for " + _appUserModelId +
+                              " failed (unknown error) - will keep retrying silently.");
+            _lastGetCurrentTrackFailed = true;
+        }
         return std::nullopt;
     }
 }

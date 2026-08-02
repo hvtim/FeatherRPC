@@ -119,6 +119,14 @@ running gives you two separate instances, not one restarted instance.
 
 Print the full path to `config.json`.
 
+### `log path`
+
+Print the full path to `featherrpc.log` - useful for a bug report, or for
+piping straight into `tail -f`/`Get-Content -Wait` while reproducing an
+issue. The tray's "Copy Diagnostic Info" action already includes a tail of
+this file, so this command is mainly for finding the file directly rather
+than reading its content through the CLI.
+
 ## Live vs queued changes
 
 Every `set`/`on`/`off` command reports one of:
