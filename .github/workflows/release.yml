@@ -136,7 +136,15 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
-          MIN_EXE_BYTES=1000000
+          # Loose backstop against a catastrophically empty installer, not
+          # a tight expected-size guess - the real installer legitimately
+          # lands around 400-450KB (confirmed: 446KB for v0.1.2-rc3),
+          # since NSIS's own LZMA compression on two architectures' worth
+          # of small native binaries compresses well. The per-zip content
+          # checks below (7z l confirming each expected file is actually
+          # inside) are the stronger correctness signal for the zips; this
+          # installer check only has raw size to go on, so it stays loose.
+          MIN_EXE_BYTES=200000
 
           INSTALLER="FeatherRPC-$VERSION-windows-installer.exe"
           [ -f "$INSTALLER" ] || { echo "::error::Missing $INSTALLER"; exit 1; }
