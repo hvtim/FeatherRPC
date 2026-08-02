@@ -82,21 +82,33 @@ Installs to `~/.local/share/FeatherRPC`, sets up autostart, and puts the
 
 ### macOS
 
-No prebuilt binary yet - see [docs/Building.md](docs/Building.md) to
-build from source.
+Download `FeatherRPC-<version>-macos-universal.dmg` from the
+[latest release](../../releases/latest), open it, and drag `FeatherRPC.app`
+to the `Applications` shortcut shown alongside it.
+
+The app is unsigned and unnotarized - no Apple Developer account exists
+for this project yet (see [docs/KnownIssues.md](docs/KnownIssues.md)).
+Gatekeeper will refuse to open it on first launch ("cannot be opened
+because the developer cannot be verified"): right-click the app in
+Finder, choose **Open**, then confirm in the dialog that appears - this
+only needs doing once.
 
 ## Tray menu
 
 Right-click the tray icon:
 
-- Set Discord Application ID
 - Media source
-- Broadcast on/off
-- Show track number on/off
-- Album art settings (see [docs/AlbumArt.md](docs/AlbumArt.md))
-- Poll interval
-- Start at login
-- Show tray icon (applies on next launch)
+- Broadcast now playing to Discord (on/off)
+- **Settings** (submenu)
+  - Set Discord Application ID
+  - Show track number on/off
+  - Album art settings (see [docs/AlbumArt.md](docs/AlbumArt.md))
+  - Poll interval
+  - Start automatically when you log in
+  - Show tray icon (applies on next launch)
+  - Verbose Logging (see [CONTRIBUTING.md](CONTRIBUTING.md))
+  - Open App Directory
+- Copy Diagnostic Info - for bug reports, see [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## CLI control
 

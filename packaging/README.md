@@ -1,9 +1,14 @@
 # Linux distro packaging
 
 - **[aur/](aur/)** - AUR `PKGBUILD`. Not yet submitted - pending an AUR
-  account and a real `v0.1.1` tag to build against.
-- **[copr/](copr/)** - Fedora COPR `.spec`. Verified locally with a real
-  `rpmbuild`/`dnf` install; not yet submitted to COPR itself.
+  account and the next tagged release (`v0.1.1` was deleted during the
+  GPL-3.0 relicense; `pkgver` needs a manual bump per release, tracked in
+  issue #13).
+- **[copr/](copr/)** - Fedora COPR `.spec`. The `hvtim/featherrpc` COPR
+  project exists and is wired to auto-build via Packit on every published
+  GitHub Release (see [docs/Releasing.md](../docs/Releasing.md)); `Version:`
+  derives itself from the git tag, no manual bump needed. Not yet verified
+  against a real tagged release - pending the first `v0.1.2` build.
 - **[appimage/](appimage/)** - `build-appimage.sh` produces a portable
   single-file AppImage. Built and bundle-verified; real-desktop run
   confirmation pending (AppImages don't run reliably under WSL).
