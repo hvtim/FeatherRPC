@@ -51,6 +51,13 @@ Or extract `FeatherRPC-<version>-linux-x86_64.tar.gz` and run
 `./install.sh` - installs to `~/.local/share/FeatherRPC`, sets up
 autostart, adds `featherrpc` to `$PATH`.
 
+Fedora (COPR):
+
+```bash
+sudo dnf copr enable hvtim/featherrpc
+sudo dnf install featherrpc
+```
+
 ### macOS
 
 Open `FeatherRPC-<version>-macos-universal.dmg` and drag FeatherRPC to
