@@ -21,7 +21,7 @@ each platform before relying on this.
 3. Right-click the tray icon, paste the Application ID, and set any other
    preferences from the same menu (see [Tray menu](#tray-menu) below).
 
-The Discord desktop app has to be running.
+The Discord desktop app has to be running, and Rich Presence must be enabled.
 
 ## Install
 
