@@ -3,22 +3,26 @@
 # %global %(shell), which is live and re-runs with no .git at build time.
 
 function featherrpc_tag {
-    local tag
-    tag="$(git describe --tags --abbrev=0 2>/dev/null)"
-    output "${tag:-v0.0.0}"
+    tag=$(git describe --tags --abbrev=0 2>/dev/null)
+    if [ -z "$tag" ]; then
+        tag=v0.0.0
+    fi
+    echo -n "$tag"
 }
 
 function featherrpc_version {
-    local tag
-    tag="$(git describe --tags --abbrev=0 2>/dev/null)"
-    tag="${tag:-v0.0.0}"
-    output "${tag#v}"
+    tag=$(git describe --tags --abbrev=0 2>/dev/null)
+    if [ -z "$tag" ]; then
+        tag=v0.0.0
+    fi
+    echo -n "${tag#v}"
 }
 
 function featherrpc_rpmversion {
-    local tag
-    tag="$(git describe --tags --abbrev=0 2>/dev/null)"
-    tag="${tag:-v0.0.0}"
-    tag="${tag#v}"
-    output "${tag/-/~}"
+    tag=$(git describe --tags --abbrev=0 2>/dev/null)
+    if [ -z "$tag" ]; then
+        tag=v0.0.0
+    fi
+    ver=${tag#v}
+    echo -n "${ver/-/\~}"
 }
