@@ -47,6 +47,11 @@ installer/macos/build-dmg.sh --app path/to/FeatherRPC.app --output FeatherRPC-<v
 
 See `installer/macos/README.md`.
 
+### macOS CLI zip
+
+Zip `FeatherRPC.app` + `featherrpc-cli` + `install.sh`/`uninstall.sh` as
+`FeatherRPC-<version>-macos-universal-cli.zip`.
+
 ### AppImage
 
 `packaging/appimage/build-appimage.sh` - see `packaging/README.md`.

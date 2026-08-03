@@ -300,6 +300,17 @@ jobs:
           [ -n "$DSYM" ] || { echo "::error::No .dSYM found under native/build - is the POST_BUILD dsymutil step wired up?"; exit 1; }
           ditto -c -k --sequesterRsrc "$DSYM" "FeatherRPC-$VERSION-macos-universal.dSYM.zip"
 
+      - name: Assemble CLI zip
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          STAGE=stage-cli
+          mkdir -p "$STAGE"
+          ditto "native/build/FeatherRPC.app" "$STAGE/FeatherRPC.app"
+          cp native/build/featherrpc-cli installer/macos/install.sh installer/macos/uninstall.sh "$STAGE/"
+          chmod +x "$STAGE/featherrpc-cli" "$STAGE/install.sh" "$STAGE/uninstall.sh"
+          ditto -c -k --sequesterRsrc "$STAGE" "FeatherRPC-$VERSION-macos-universal-cli.zip"
+
       - name: Sanity check assets
         run: |
           set -euo pipefail
@@ -322,6 +333,14 @@ jobs:
 
           DSYMZIP="FeatherRPC-$VERSION-macos-universal.dSYM.zip"
           [ -s "$DSYMZIP" ] || { echo "::error::Missing or empty $DSYMZIP"; exit 1; }
+
+          CLIZIP="FeatherRPC-$VERSION-macos-universal-cli.zip"
+          [ -f "$CLIZIP" ] || { echo "::error::Missing $CLIZIP"; exit 1; }
+          LISTING=$(unzip -l "$CLIZIP")
+          for MEMBER in FeatherRPC.app/Contents/MacOS/FeatherRPC featherrpc-cli install.sh uninstall.sh; do
+            echo "$LISTING" | grep -qF "$MEMBER" || { echo "::error::$CLIZIP is missing $MEMBER"; exit 1; }
+          done
+
           echo "macOS assets look correct."
 
       - name: Upload artifacts
@@ -331,6 +350,7 @@ jobs:
           path: |
             FeatherRPC-*-macos-universal.dmg
             FeatherRPC-*-macos-universal.dSYM.zip
+            FeatherRPC-*-macos-universal-cli.zip
 
   publish:
     name: Publish GitHub Release

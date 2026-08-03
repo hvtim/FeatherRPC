@@ -20,6 +20,7 @@ SemVer starting at 0.1.0.
 - [Added] Crash handlers on all 3 platforms, writing a dedicated crash log.
 - [Fixed] Linux: rare tray-startup segfault from a D-Bus race.
 - [Fixed] Linux: Copy Diagnostic Info could freeze the tray when `wl-copy` was installed.
+- [Added] macOS CLI zip release asset (`featherrpc-cli` + `install.sh`/`uninstall.sh`) - previously the CLI wasn't shipped in any macOS download.
 
 ## [0.1.1] - 2026-07-27
 

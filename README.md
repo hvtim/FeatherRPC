@@ -61,11 +61,18 @@ sudo dnf install featherrpc
 ### macOS
 
 Open `FeatherRPC-<version>-macos-universal.dmg` and drag FeatherRPC to
-Applications.
+Applications. There's no window - look for the icon in the menu bar.
 
 macOS blocks the first launch because the app is unsigned. 
 To bypass Gatekeeper, go to `System Settings` > `Privacy & Security`, 
 scroll to the bottom and click `Allow Anyway`.
+
+#### CLI only
+
+Extract `FeatherRPC-<version>-macos-universal-cli.zip` and run
+`./install.sh` - installs the app, `featherrpc-cli` to `~/.local/bin`,
+and autostart. `~/.local/bin` isn't on `$PATH` by default; add it
+yourself, e.g. `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`.
 
 ## Tray menu
 
