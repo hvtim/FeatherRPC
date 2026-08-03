@@ -1,11 +1,10 @@
-# Derived from the checked-out git tag - no manual bump needed per release.
-# upstream_tag keeps the real tag format (hyphen, e.g. v0.1.2-rc1) for the
-# GitHub URL and the archive's real extracted directory name - %{version}
-# can't be used for either of those, since it's tilde-converted for RPM's
-# benefit (0.1.2~rc1) and doesn't match what GitHub actually names things.
-%global upstream_tag %(git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)
-%global upstream_version_raw %(echo %{upstream_tag} | sed -e 's/^v//')
-%global upstream_version %(echo %{upstream_version_raw} | sed -e 's/-/~/')
+# Frozen via rpkg's {{{ }}} macros (rpkg.macros) at SRPM-generation time -
+# not %(shell), which re-runs with no .git at the later build stage.
+# upstream_tag keeps the raw hyphenated tag for the GitHub URL/dir name;
+# %{version} is tilde-converted (0.1.2~rc1) and won't match either.
+%global upstream_tag {{{ featherrpc_tag }}}
+%global upstream_version_raw {{{ featherrpc_version }}}
+%global upstream_version {{{ featherrpc_rpmversion }}}
 
 Name:           featherrpc
 Version:        %{upstream_version}
