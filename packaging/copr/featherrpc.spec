@@ -1,5 +1,11 @@
 # Derived from the checked-out git tag - no manual bump needed per release.
-%global upstream_version %(git describe --tags --abbrev=0 2>/dev/null | sed -e 's/^v//' -e 's/-/~/' || echo 0.0.0)
+# upstream_tag keeps the real tag format (hyphen, e.g. v0.1.2-rc1) for the
+# GitHub URL and the archive's real extracted directory name - %{version}
+# can't be used for either of those, since it's tilde-converted for RPM's
+# benefit (0.1.2~rc1) and doesn't match what GitHub actually names things.
+%global upstream_tag %(git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)
+%global upstream_version_raw %(echo %{upstream_tag} | sed -e 's/^v//')
+%global upstream_version %(echo %{upstream_version_raw} | sed -e 's/-/~/')
 
 Name:           featherrpc
 Version:        %{upstream_version}
@@ -8,7 +14,7 @@ Summary:        Syncs now-playing media to Discord as a Rich Presence status
 
 License:        GPL-3.0-or-later
 URL:            https://github.com/hvtim/FeatherRPC
-Source0:        https://github.com/hvtim/FeatherRPC/archive/refs/tags/v%{version}.tar.gz#/FeatherRPC-%{version}.tar.gz
+Source0:        https://github.com/hvtim/FeatherRPC/archive/refs/tags/%{upstream_tag}.tar.gz#/FeatherRPC-%{version}.tar.gz
 
 BuildRequires:  cmake
 BuildRequires:  gcc-c++
@@ -28,7 +34,7 @@ Presence status - iTunes, VLC, browsers, or anything else reporting
 now-playing info. On Linux, works with any MPRIS-compliant media player.
 
 %prep
-%autosetup -n FeatherRPC-%{version}
+%autosetup -n FeatherRPC-%{upstream_version_raw}
 
 %build
 %cmake -S native
