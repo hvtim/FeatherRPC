@@ -524,12 +524,6 @@ glossed over.
   headless binary never links any GUI toolkit code, even dormant" for
   "one binary, one package, one installer to maintain" - accepted
   knowingly, not by default.
-- **Dark-mode edit-control focus underline.** A Windows 11 search-box-style
-  blue underline on the Application ID edit control was initially "fixed" by
-  switching its theme so it only showed in dark mode. Reverted after
-  noticing light mode showed the same underline and it wasn't a problem -
-  restored consistency across both modes instead of removing a cosmetic
-  detail nobody minded.
 
 ## Process notes
 
