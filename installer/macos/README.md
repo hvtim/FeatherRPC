@@ -1,16 +1,21 @@
 # macOS install
 
-Two install paths, both built from the same `FeatherRPC.app`:
+Two release assets, both built from the same `FeatherRPC.app`:
 
-- **`.dmg`** - the normal path for most users. Drag `FeatherRPC.app` to
-  `Applications`, done. No autostart, no CLI tool - just the app.
-- **`install.sh`** - for scripted/no-GUI setups. Installs to
-  `~/Applications` (no admin needed), registers a LaunchAgent for autostart,
-  and installs `featherrpc-cli` to `~/.local/bin`. Use `uninstall.sh` to
-  remove everything it installed.
+- **`FeatherRPC-<version>-macos-universal.dmg`** - the normal path for
+  most users. Drag `FeatherRPC.app` to `Applications`, done. No autostart,
+  no CLI tool - just the app.
+- **`FeatherRPC-<version>-macos-universal-cli.zip`** - `FeatherRPC.app` +
+  `featherrpc-cli` + `install.sh`/`uninstall.sh`. Run `./install.sh` to
+  install to `~/Applications` (no admin needed), register a LaunchAgent
+  for autostart, and install `featherrpc-cli` to `~/.local/bin`. Use
+  `uninstall.sh` to remove everything it installed.
 
-Neither replaces the other - `.dmg` is the default; `install.sh` is the
-scriptable fallback.
+Neither replaces the other - `.dmg` is the default; the CLI zip is for
+anyone who wants `featherrpc-cli` or a scripted/no-GUI install.
+
+`~/.local/bin` isn't on `$PATH` by default on macOS - add it yourself, e.g.
+`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`.
 
 ## Building the .dmg (maintainer, on real Mac hardware)
 
@@ -44,8 +49,11 @@ scriptable fallback.
 every tagged release, on GitHub's own macOS runners. This section is the
 manual fallback if you need to rebuild the `.dmg` outside that workflow.
 
+The CLI zip is assembled and attached automatically by the same workflow -
+nothing to build manually there.
+
 ## Known limitations
 
 Nothing here is signed or notarized - see
 [docs/KnownIssues.md](../../docs/KnownIssues.md) for what that means for
-anyone downloading the `.dmg` (Gatekeeper will warn on first launch).
+anyone downloading either asset (Gatekeeper will warn on first launch).
