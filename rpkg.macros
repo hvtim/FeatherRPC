@@ -1,0 +1,24 @@
+# {{{ }}} macros are resolved once, at SRPM-generation time (real .git
+# present), and baked into the packaged spec as static text - unlike
+# %global %(shell), which is live and re-runs with no .git at build time.
+
+function featherrpc_tag {
+    local tag
+    tag="$(git describe --tags --abbrev=0 2>/dev/null)"
+    output "${tag:-v0.0.0}"
+}
+
+function featherrpc_version {
+    local tag
+    tag="$(git describe --tags --abbrev=0 2>/dev/null)"
+    tag="${tag:-v0.0.0}"
+    output "${tag#v}"
+}
+
+function featherrpc_rpmversion {
+    local tag
+    tag="$(git describe --tags --abbrev=0 2>/dev/null)"
+    tag="${tag:-v0.0.0}"
+    tag="${tag#v}"
+    output "${tag/-/~}"
+}
