@@ -63,7 +63,9 @@ sudo dnf install featherrpc
 Open `FeatherRPC-<version>-macos-universal.dmg` and drag FeatherRPC to
 Applications.
 
-macOS blocks the first launch - right-click the app, choose Open, confirm.
+macOS blocks the first launch because the app is unsigned. 
+To bypass Gatekeeper, go to `System Settings` > `Privacy & Security`, 
+scroll to the bottom and click `Allow Anyway`.
 
 ## Tray menu
 
@@ -106,10 +108,9 @@ Full detail in [docs/KnownIssues.md](docs/KnownIssues.md). Headlines:
 - The "Listening to" wording isn't officially supported for third-party
   apps and could change in a future Discord update.
 - Album art falls back to a static image if no automatic match is found.
-- macOS is verified on Intel; Apple Silicon (arm64) compiles but has
-  never run on real Apple Silicon hardware.
-- Linux tray rendering is confirmed on KDE Plasma 6; other desktop
-  environments are untested.
+- Linux tray rendering is only confirmed on KDE Plasma 6 and Gnome.
+- _AppIndicator and KStatusNotifierItem_ Extension is required on Gnome
+  for the tray icon to render. You can install it via [Gnome Shell Extensions](https://extensions.gnome.org/extension/615/appindicator-support/).
 - Windows ARM64 compiles but has never run on real ARM64 hardware.
 - No Windows service.
 - No code signing on any platform.
